@@ -145,6 +145,16 @@ Optional, off by default: `rogue-security/prompt-injections-benchmark` (Qualifir
 
 **Splits**: the curated set is test only. The public set is split 20% dev / 80% test, stratified by source and label. Thresholds are chosen on dev. The report also gives per-source test metrics, which is the leave-one-source view for models trained on public data.
 
+**Role of each split (both tracks)**
+
+| Split | Used for | Never used for |
+|---|---|---|
+| train (skills only) | fine-tuning; the 8-shot examples for Claude | thresholds, reporting |
+| val / dev | threshold selection (best F1, 95% and 99% recall cut-offs), epoch and checkpoint selection, temperature calibration, the 512-vs-8k Laya decision | training, reporting |
+| test | the reported numbers, scored once per seed after everything is frozen | any decision |
+
+MaliciousSkillBench's MSD split groups malicious skills into structural families (same template or near-duplicate attack) and keeps each family on one side, so test attack structures are unseen in training; SD holds out three whole source collections, so test comes from collections the model never saw, and its val is drawn from training sources by construction. The hand-crafted skills and SkillSpector fixtures are an extra unseen test set; the loader asserts that none of their text hashes appears in any train split.
+
 ### 6.2 Skill track
 
 **MaliciousSkillBench** (`ProtectSkills/MaliciousSkillBench`, config `primary`, parquet). Text is `skill_text`, or `public_skill_text` when redacted; the five rows without text are dropped. Splits come from the frozen manifests in `splits/`: **MSD** (malicious-structural-disjoint) as the main protocol and **SD** (source-disjoint) as the hard protocol; `val` from the manifest is the dev split. Attack category fields map to `scenario`.
@@ -200,7 +210,7 @@ One shared policy per track in `configs/policies/{prompts,skills}/shared.txt`, u
 
 ## 8. Benchmark protocol
 
-- **Thresholds**: for each detector, choose on dev the threshold that maximises F1, plus the thresholds that give 95% and 99% recall. Freeze, then score test. Also report each model's own default label.
+- **Thresholds**: for each detector, choose on dev the threshold that maximises F1, plus the thresholds that give 95% and 99% recall. Freeze them in `results/<run-id>/thresholds.json` (one entry per detector, track and policy, with the dev metrics at each cut-off), then score test. Verdicts store only the raw probability; cut-offs are applied in the report stage. Also report each model's own default label.
 - **Metrics** per detector, per track, per scenario, per source: recall, FPR, precision, F1, AUROC, FPR at 95% and 99% recall, precision at 10% and 1% malicious prevalence (skill track). Bootstrap 95% CIs with 1,000 resamples over items.
 - **Latency**: five warm-up items, then every test item at batch size 1 timed with `perf_counter` around the adapter call; report p50 and p95. Throughput: 256 items at batch 16 (local only), items per second. Claude: end-to-end request time from the Mac, p50 and p95, with the measurement window noted.
 - **Cost**: remote cost from recorded usage; local cost reported as 0 marginal with model size, device, and seconds per 1,000 items.
