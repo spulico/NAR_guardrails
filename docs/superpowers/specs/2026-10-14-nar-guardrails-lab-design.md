@@ -155,9 +155,9 @@ Items of B3 and I1–I4 are formatted the way an agent would see them: a short f
 | `laya` | `convaiinnovations/laya` | state = text; one `noul` question from the policy | P(yes) |
 | `laya-multi` | `convaiinnovations/laya-multilingual`, `max_len=8192` | same | P(yes); skill track only, context-length control |
 | `gliner2-decide` | `fastino/GLiNER2.5-Decide` | `classify_text` with a two-label task whose label descriptions come from the policy, `include_confidence=True` | confidence of `malicious` |
-| `gliguard` | `fastino/gliguard-LLMGuardrails-300M` | prompt track: `prompt_safety` plus `jailbreak_detection` tasks; skill track: `prompt_safety` with the policy as context | P(unsafe), or max over injection-type labels when reported |
+| `gliguard` | `fastino/gliguard-LLMGuardrails-300M` | `prompt_safety` task on the item text, both tracks; on the prompt track the `jailbreak_detection` task runs too and its label is stored in `raw` for scenario analysis. GLiGuard has fixed labels, so the policy text does not apply | P(unsafe) from `prompt_safety` |
 | `openjev-2b` | `ZefanCai/Open-Jev-2B` via local `/v1/systemone` server | same `noul` question as Laya | P(yes); optional, enabled only if the MPS smoke test passes |
-| `qwen3guard-stream` | `Qwen/Qwen3Guard-Stream-0.6B` | prompt head | P(unsafe) + P(controversial) as score, label at unsafe |
+| `qwen3guard-stream` | `Qwen/Qwen3Guard-Stream-0.6B` | prompt head | 1 − P(safe); model label is 1 only for `unsafe` |
 | `protectai` | `protectai/deberta-v3-base-prompt-injection-v2` | sequence classification | P(INJECTION) |
 | `promptguard2-86m`, `promptguard2-22m` | `meta-llama/Llama-Prompt-Guard-2-86M` / `-22M` | 512-token windows, max over windows | P(MALICIOUS) |
 | `sentinel` | `qualifire/prompt-injection-sentinel` | sequence classification | P(jailbreak) |
