@@ -83,7 +83,7 @@ Implication for the lab: on prompts, expect NAR zero-shot to be competitive with
 
 ### 5.1 Prompt track (user and agent inputs)
 
-Two sources: a hand-curated scenario set (quality, demo-readable, Polish + English) and sampled public sets (scale, distribution shift).
+Two sources: a hand-curated scenario set (quality, demo-readable, English) and sampled public sets published in 2025–2026 (scale, distribution shift).
 
 Scenario taxonomy for the curated set (target ~200 items, balanced ~50/50 benign/malicious):
 
@@ -103,7 +103,25 @@ Scenario taxonomy for the curated set (target ~200 items, balanced ~50/50 benign
 | I4 | Multi-agent handoff injection | message from "another agent" asserting authority | yes |
 | P1 | Polish attacks | translations of D1/I1/J1 | yes |
 
-Public sources to sample from (keep provenance column for leave-one-source-out analysis): `deepset/prompt-injections` (546, mixed), `xTRam1/safe-guard-prompt-injection` (8,236), `jackhhao/jailbreak-classification`, `qualifire/prompt-injections-benchmark` (5,000), NotInject (over-defense, 339), InjecAgent (1,054 indirect agent cases, GitHub `uiuc-kang-lab/InjecAgent`), BIPIA (`microsoft/BIPIA`), LLMail-Inject (Microsoft challenge, MIT), `ai-safety-institute/AgentHarm` (harmful vs benign agent requests), `allenai/wildjailbreak` (gated), AgentShield (537 agent cases, `github.com/doronp/agentshield-benchmark`, license unstated). Check each license at import time.
+Public sources (rule: published in 2025 or 2026 only; 2024-era sets are stale and were used to train the vendor classifiers under test). Verified via the Hugging Face API and GitHub on 2026-10-14:
+
+| Source | Published | Licence | Size | Role |
+|---|---|---|---|---|
+| AgentShield corpus (doronp, GitHub) | 2026-03 | Apache-2.0 | 537 cases, 7 categories incl. 65 over-refusal benign | direct, indirect, tool abuse, multi-agent, over-defense |
+| PIDS-Bench eval subsets (ShirePyDev, GitHub tag v1.0-pids-bench) | 2026-09 | MIT | hard-benign 1,472; obfuscated 405; domain shift 2,000; structural shift 1,998 | over-defense and distribution shift (main corpus excluded: it repackages deepset/SPML) |
+| neuralchemy/Prompt-injection-dataset | 2026-01 | Apache-2.0 | 16,918 (core test 942), 12 categories | mixed; use only the authors' original rows |
+| prodnull/prompt-injection-repo-dataset | 2026-03 | Apache-2.0 (gated) | 5,671, balanced | repository-content injection against coding agents |
+| sureheremarv/ipi_arena_attacks | 2026-03 | MIT | 95 | indirect injection, agent arena 2026 |
+| BELLS jailbreak dataset (CeSIA) | 2026-02 | CC BY-NC-SA 4.0 (manual gate) | 6,406 incl. transformed benign | 35 obfuscation techniques, benign-under-obfuscation control |
+| mcp-guardbench (getmcpm, GitHub) | 2026-10 (v5) | MIT | 57 JSON-RPC frames, 20 benign | MCP tool poisoning and exfil |
+| microsoft/llmail-inject-challenge | 2025-05 | MIT | 462k submissions | indirect injection via email, adaptive attackers |
+| hackaprompt/Pliny_HackAPrompt_Dataset | 2025-07 | CC BY 4.0 (gated) | 10k–100k submissions with `passed` label | jailbreaks incl. two challenges against Prompt Guard |
+| Simsonsun/JailbreakPrompts | 2025-06 | MIT | 2,426 | jailbreaks filtered for classifier-training contamination |
+| Mindgard/evaded-prompt-injection-and-jailbreak-samples | 2025-04 | CC BY-NC 4.0 (gated) | 10k–100k | evasion variants (character injection, adversarial ML) |
+| MCPTox (zhiqiangwang4, GitHub, AAAI 2026) | 2025-08 | none stated | 1,312 poisoned tool descriptions | MCP tool poisoning |
+| allenai/WildChat-4.8M | 2025-08 | ODC-BY | 4.8M chats | plain benign user prompts |
+
+Excluded as pre-2025 or repackaged: deepset/prompt-injections, xTRam1 safe-guard, jackhhao, WildJailbreak, InjecAgent, BIPIA, AgentHarm, NotInject, HarmBench, JailbreakBench, Cogensec jailbreak-corpus, Bravansky compact-jailbreaks, PIDS-Bench main splits. Qualifire's benchmark (rogue-security, 2025-01) is optional only. Not usable as text datasets: WASP, MCP-SafetyBench, AgentDojo (environment benchmarks), LongPIBench and MCP-AttackBench (no public release found).
 
 ### 5.2 Skill track (malicious agent skills)
 

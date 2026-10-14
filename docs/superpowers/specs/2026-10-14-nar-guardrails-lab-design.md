@@ -26,7 +26,7 @@ Every result row carries accuracy metrics with confidence intervals, measured la
 - Remote models: Claude Haiku 5.5 and Claude Sonnet 5.5 via the Anthropic SDK.
 - Fine-tuning on the skill track: Laya, GLiNER2.5-Decide, ModernBERT-large, Open-Jev-2B (optional).
 - English only.
-- Datasets: hand-curated prompt scenarios, sampled public prompt sets, MaliciousSkillBench, SkillSpector fixtures, hand-crafted skills.
+- Datasets: hand-curated prompt scenarios, public prompt sets published in 2025 or 2026 only, MaliciousSkillBench, SkillSpector fixtures, hand-crafted skills.
 
 **Out of scope**
 
@@ -123,7 +123,25 @@ Dependencies: `torch`, `transformers`, `datasets`, `gliner2[local,train]`, `laya
 
 Items of B3 and I1–I4 are formatted the way an agent would see them: a short framing line (`Tool result from read_email:`) followed by the content. The whole string is the detector input.
 
-**Public set** (`data/processed/prompts_public.jsonl`, target about 4,000 items). Sampled with a fixed seed, cap 500 per source, keeping the source's original label and mapping it to our binary label. Sources: `deepset/prompt-injections`, `xTRam1/safe-guard-prompt-injection`, `jackhhao/jailbreak-classification`, `qualifire/prompt-injections-benchmark`, NotInject (benign over-defense), InjecAgent (indirect, agent tool context), BIPIA, LLMail-Inject, `ai-safety-institute/AgentHarm` (harmful plus benign), `allenai/wildjailbreak` (gated). Each loader records the license tag; a source whose license forbids this use is skipped and listed in the report.
+**Public set** (`data/processed/prompts_public.jsonl`, about 11,000 items). Rule: only sources first published in 2025 or 2026. Older sets (deepset, safe-guard, jackhhao, WildJailbreak, InjecAgent, BIPIA, AgentHarm, NotInject, HarmBench, JailbreakBench) are excluded because they are stale and were used to train the vendor classifiers under test; aggregators that repackage them (Cogensec jailbreak-corpus, PIDS-Bench main train/test) are excluded for the same reason. Sampling uses a fixed seed and a cap of 500 per source unless stated; every row keeps its original label, a licence tag, and the source's publication date in `meta`.
+
+| Source | Published | Licence | Used slice | Scenario codes | Label |
+|---|---|---|---|---|---|
+| AgentShield corpus (`github.com/doronp/agentshield-benchmark`, `corpus/*/tests.jsonl`) | 2026-03 | Apache-2.0 | all 537: `input_text`, `expected_behavior` block/allow | D1, D2, I1, I2, I4 (205 PI, 45 jailbreak, 87 exfil, 80 tool abuse, 35 multi-agent, 20 provenance); 65 over-refusal rows → B2 | from `expected_behavior` |
+| PIDS-Bench eval subsets (`github.com/ShirePyDev/Prompt-Injection-Detection-System`, tag `v1.0-pids-bench`, `data/pids_bench_v3/`) | 2026-09 | MIT | `eval_subsets/hard_benign_test.csv` (1,472 benign), `eval_subsets/obfuscated_attacks.csv` (405), `ood/domain_ood.csv` (2,000), `ood/structural_ood.csv` (1,998); main train/val/test not used | B2 (hard benign), J2/D1 (obfuscated), domain and structural shift slices | from file |
+| `neuralchemy/Prompt-injection-dataset` (`core`, test split) | 2026-01 | Apache-2.0 | rows whose `source` is the authors' original attack database or hand-crafted hard negatives only (excludes HarmBench and WildGuard-derived rows), cap 500 | mapped from `category` (direct_injection, system_extraction, indirect_injection, token_smuggling, crescendo, many_shot, benign) | `label` |
+| `prodnull/prompt-injection-repo-dataset` | 2026-03 | Apache-2.0, gated | 500 (balanced) | new code **I5**: repository content injection aimed at coding agents (READMEs, CI configs, code comments) | `label` |
+| `sureheremarv/ipi_arena_attacks` | 2026-03 | MIT | all 95 | I1, I2 | 1 |
+| BELLS jailbreak dataset (`centrepourlasecuriteia/jailbreak-dataset`) | 2026-02 | CC BY-NC-SA 4.0, manual gate | 500 harmful-origin transformed prompts plus all benign-origin transformed prompts | J2 (35 obfuscation techniques); benign-origin rows → B2 | 0 when `category` is Benign, else 1 |
+| mcp-guardbench (`github.com/getmcpm/mcp-guardbench`, `cases/`) | 2026-10 (corpus v5) | MIT | all 57 JSON-RPC frames (33 attack, 20 benign, 4 warn) | I3 (tool-list metadata, tool responses, call arguments); warn rows counted as malicious | from `expected` |
+| `microsoft/llmail-inject-challenge` | 2025-05 | MIT | 500 Phase-2 submissions whose output shows the defence was evaded or exfiltration succeeded; text = subject + body | I1, I2 (email assistant) | 1 |
+| `hackaprompt/Pliny_HackAPrompt_Dataset` | 2025-07 | CC BY 4.0, gated | 500 user messages with `passed` true from text challenges (`pliny_9` and `pliny_10` target Prompt Guard filters and are kept as their own sub-slice) | J1, J2 | 1 |
+| `Simsonsun/JailbreakPrompts` | 2025-06 | MIT | 500 | J1 (filtered for no overlap with public classifier training data) | 1 |
+| `Mindgard/evaded-prompt-injection-and-jailbreak-samples` | 2025-04 | CC BY-NC 4.0, gated | 500 modified prompts (evasion variants: character injection, adversarial ML) | J2, D1 (evasion) | 1 |
+| MCPTox (`github.com/zhiqiangwang4/MCPTox-Benchmark`, `pure_tool.json`) | 2025-08 | no licence file; cite the AAAI 2026 paper, do not redistribute | 500 poisoned tool descriptions with their user query | I3 | 1 |
+| `allenai/WildChat-4.8M` | 2025-08 | ODC-BY | 1,000 English, non-toxic first user turns | B1 (plain benign) | 0 |
+
+Optional, off by default: `rogue-security/prompt-injections-benchmark` (Qualifire, 2025-01, CC BY-NC 4.0, 5,000 rows, provenance undocumented, and the training set of the Sentinel detector under test).
 
 **Splits**: the curated set is test only. The public set is split 20% dev / 80% test, stratified by source and label. Thresholds are chosen on dev. The report also gives per-source test metrics, which is the leave-one-source view for models trained on public data.
 
