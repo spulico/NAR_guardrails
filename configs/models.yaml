@@ -1,0 +1,100 @@
+# detector key -> adapter config. `tracks` lists where the detector runs.
+detectors:
+  fake:
+    adapter: fake
+    tracks: [prompts, skills]
+  protectai:
+    adapter: hf_classifier
+    model_id: protectai/deberta-v3-base-prompt-injection-v2
+    positive_label: INJECTION
+    max_length: 512
+    device: auto
+    batch_size: 16
+    tracks: [prompts, skills]
+  promptguard2-86m:
+    adapter: hf_classifier
+    model_id: meta-llama/Llama-Prompt-Guard-2-86M
+    positive_label: MALICIOUS
+    max_length: 512
+    window: true
+    device: auto
+    batch_size: 16
+    tracks: [prompts, skills]
+  promptguard2-22m:
+    adapter: hf_classifier
+    model_id: meta-llama/Llama-Prompt-Guard-2-22M
+    positive_label: MALICIOUS
+    max_length: 512
+    window: true
+    device: auto
+    batch_size: 16
+    tracks: [prompts, skills]
+  sentinel:
+    adapter: hf_classifier
+    model_id: qualifire/prompt-injection-sentinel
+    positive_label: jailbreak
+    max_length: 8192
+    device: auto
+    batch_size: 8
+    tracks: [prompts, skills]
+  granite-hap:
+    adapter: hf_classifier
+    model_id: ibm-granite/granite-guardian-hap-125m
+    positive_label: LABEL_1
+    max_length: 512
+    device: auto
+    batch_size: 16
+    tracks: [prompts]
+  laya:
+    adapter: laya
+    model_id: convaiinnovations/laya
+    device: auto
+    batch_size: 8
+    tracks: [prompts, skills]
+  laya-multi:
+    adapter: laya
+    model_id: convaiinnovations/laya-multilingual
+    max_length: 8192
+    device: auto
+    batch_size: 4
+    tracks: [skills]
+  gliner2-decide:
+    adapter: gliner2
+    mode: decide
+    model_id: fastino/GLiNER2.5-Decide
+    device: auto
+    batch_size: 8
+    tracks: [prompts, skills]
+  gliguard:
+    adapter: gliner2
+    mode: gliguard
+    model_id: fastino/gliguard-LLMGuardrails-300M
+    device: auto
+    batch_size: 8
+    tracks: [prompts, skills]
+  qwen3guard-stream:
+    adapter: qwen3guard
+    model_id: Qwen/Qwen3Guard-Stream-0.6B
+    device: auto
+    batch_size: 4
+    tracks: [prompts, skills]
+  openjev-2b:
+    adapter: openjev
+    url: http://127.0.0.1:8791/v1/systemone
+    optional: true
+    batch_size: 1
+    tracks: [prompts, skills]
+  claude-haiku-5-5:
+    adapter: claude
+    model_id: claude-haiku-5-5
+    effort: low
+    max_tokens: 256
+    concurrency: 4
+    tracks: [prompts, skills]
+  claude-sonnet-5-5:
+    adapter: claude
+    model_id: claude-sonnet-5-5
+    effort: low
+    max_tokens: 256
+    concurrency: 4
+    tracks: [prompts, skills]
