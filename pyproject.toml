@@ -1,0 +1,43 @@
+[project]
+name = "nar-guardrails"
+version = "0.1.0"
+description = "Benchmark of non-autoregressive guardrail models vs classifiers vs Claude"
+requires-python = ">=3.12,<3.13"
+dependencies = [
+  "torch>=2.4",
+  "transformers>=4.50",
+  "datasets>=3.0",
+  "huggingface-hub>=0.25",
+  "pyarrow>=17",
+  "pyyaml>=6",
+  "numpy>=1.26",
+  "pandas>=2.2",
+  "tabulate>=0.9",
+  "scikit-learn>=1.5",
+  "matplotlib>=3.9",
+  "anthropic>=1.0",
+  "requests>=2.32",
+  "gliner2[local]>=1.3",
+  "laya>=0.3.4",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8", "pytest-cov>=5"]
+
+[project.scripts]
+nar = "nar_guardrails.cli:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["nar_guardrails"]
+
+[tool.pytest.ini_options]
+markers = [
+  "model: downloads and runs a real model (slow, needs network)",
+  "live: calls the Anthropic API (costs money)",
+]
+addopts = "-m 'not model and not live'"
+testpaths = ["tests"]

@@ -8,3 +8,5 @@ __pycache__/
 .env
 .worktrees/
 .superpowers/
+*.egg-info/
+.pytest_cache/
