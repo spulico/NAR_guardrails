@@ -75,6 +75,7 @@ detectors:
   qwen3guard-stream:
     adapter: qwen3guard
     model_id: Qwen/Qwen3Guard-Stream-0.6B
+    revision: 74e1479150e9029d6778993f00491108323bb6f8
     device: auto
     batch_size: 4
     tracks: [prompts, skills]
