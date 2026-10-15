@@ -15,8 +15,10 @@ def _load_adapters() -> None:
     for m in _ADAPTER_MODULES:
         try:
             importlib.import_module(f"nar_guardrails.detectors.{m}")
-        except ModuleNotFoundError:
-            pass  # adapter not written yet or optional dependency missing
+        except ModuleNotFoundError as e:
+            if e.name != f"nar_guardrails.detectors.{m}":
+                raise  # a missing transitive dependency must not be masked
+            # adapter module not written yet
 
 
 def load_models_cfg(path: Path = Path("configs/models.yaml")) -> dict:

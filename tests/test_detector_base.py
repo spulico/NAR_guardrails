@@ -71,3 +71,18 @@ def test_registry_has_fake_and_unknown_key_errors():
     assert "fake" in REGISTRY
     with pytest.raises(KeyError):
         build_detector("nope", POL, {"fake": {"adapter": "fake"}})
+
+
+def test_load_adapters_masks_missing_adapter_but_not_missing_dependency(monkeypatch, tmp_path):
+    import sys
+    import nar_guardrails.detectors as dets
+
+    (tmp_path / "broken_dep_adapter.py").write_text("import _definitely_missing_dependency_xyz\n")
+    monkeypatch.setattr(dets, "__path__", [*dets.__path__, str(tmp_path)])
+    monkeypatch.setattr(dets, "_ADAPTER_MODULES", ("no_such_adapter_module",))
+    dets._load_adapters()  # genuinely missing adapter module is tolerated
+    monkeypatch.setattr(dets, "_ADAPTER_MODULES", ("broken_dep_adapter",))
+    with pytest.raises(ModuleNotFoundError) as ei:
+        dets._load_adapters()
+    assert ei.value.name == "_definitely_missing_dependency_xyz"
+    sys.modules.pop("nar_guardrails.detectors.broken_dep_adapter", None)
