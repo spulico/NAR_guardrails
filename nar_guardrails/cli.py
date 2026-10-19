@@ -27,6 +27,11 @@ def build_parser() -> argparse.ArgumentParser:
     b.add_argument("--out-dir", default="data/processed")
     b.add_argument("--seed", type=int, default=0)
     b.add_argument("--no-strict", action="store_true")
+    rp = sub.add_parser("report", help="build report.md for a run")
+    rp.add_argument("--run", default="latest")
+    rp.add_argument("--dev-run", default=None)
+    rp.add_argument("--results-dir", default="results")
+    rp.add_argument("--data-dir", default="data/processed")
     return p
 
 
@@ -47,6 +52,11 @@ def main(argv: list[str] | None = None) -> int:
                             allow_dirty=args.allow_dirty, throughput=args.throughput,
                             data_dir=Path(args.data_dir), results_dir=Path(args.results_dir)))
         print(out)
+        return 0
+    if args.cmd == "report":
+        from pathlib import Path
+        from nar_guardrails.report.build import build_report
+        print(build_report(Path(args.results_dir), args.run, args.dev_run, data_dir=Path(args.data_dir)))
         return 0
     if args.cmd == "data" and args.data_cmd == "build":
         import os
