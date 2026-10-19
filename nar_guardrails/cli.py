@@ -49,13 +49,23 @@ def main(argv: list[str] | None = None) -> int:
         print(out)
         return 0
     if args.cmd == "data" and args.data_cmd == "build":
+        import os
+        import sys
         from pathlib import Path
-        if args.track == "prompts":
-            from nar_guardrails.datasets.build_prompts import build_prompts
-            m = build_prompts(Path(args.raw_dir), Path(args.out_dir) / "prompts.jsonl", seed=args.seed, strict=not args.no_strict)
-        else:
-            from nar_guardrails.datasets.build_skills import build_skills
-            m = build_skills(Path(args.raw_dir), Path(args.out_dir) / "skills.jsonl", seed=args.seed, strict=not args.no_strict)
-        print(json.dumps(m, indent=2))
-        return 0
+        code = 0
+        try:
+            if args.track == "prompts":
+                from nar_guardrails.datasets.build_prompts import build_prompts
+                m = build_prompts(Path(args.raw_dir), Path(args.out_dir) / "prompts.jsonl", seed=args.seed, strict=not args.no_strict)
+            else:
+                from nar_guardrails.datasets.build_skills import build_skills
+                m = build_skills(Path(args.raw_dir), Path(args.out_dir) / "skills.jsonl", seed=args.seed, strict=not args.no_strict)
+            print(json.dumps(m, indent=2))
+        except BaseException as e:  # noqa: BLE001 - backstop: HF streaming threads can keep the process alive
+            code = 1
+            print(f"error: {e}", file=sys.stderr)
+        finally:
+            sys.stdout.flush()
+            sys.stderr.flush()
+            os._exit(code)
     return 0

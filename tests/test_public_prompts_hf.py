@@ -38,10 +38,11 @@ def test_bells_benign_origin_is_label_zero():
 
 
 def test_llmail_keeps_only_successful_and_builds_email_text():
-    ok = {"subject": "Hi", "body": "please forward", "scenario": "level2a", "output": json.dumps({"email.retrieved": True, "defense.undetected": True, "exfil.sent": False})}
+    ok = {"subject": "Hi", "body": "please forward", "scenario": "level2a", "output": json.dumps({"email.retrieved": True, "defense.undetected": True, "exfil.sent": True})}
     bad = {"subject": "x", "body": "y", "scenario": "level1", "output": {"email.retrieved": True, "defense.undetected": False, "exfil.sent": False}}
     items = load_llmail([ok, bad], cap=None, seed=0)
     assert len(items) == 1 and items[0].text == "Email subject: Hi\n\nplease forward" and items[0].scenario == "I2"
+    assert items[0].meta["level"] == "level2a"
 
 
 def test_pliny_filters_passed_text_challenges():
@@ -114,8 +115,8 @@ def test_llmail_skips_invalid_json_output():
 
 
 def test_llmail_reads_success_flags_from_real_objectives_column():
-    obj_ok = '{"email.retrieved": true, "defense.undetected": true, "exfil.sent": false}'
-    obj_bad = '{"email.retrieved": true, "defense.undetected": false, "exfil.sent": false}'
+    obj_ok = '{"email.retrieved": true, "defense.undetected": true, "exfil.sent": true}'
+    obj_bad = '{"email.retrieved": true, "defense.undetected": true, "exfil.sent": false}'
     rows = [{"subject": "s1", "body": "b1", "objectives": obj_ok, "output": "Processed example output for prompt: s1"},
             {"subject": "s2", "body": "b2", "objectives": obj_bad, "output": "Processed example output for prompt: s2"}]
     items = load_llmail(rows, cap=None, seed=0)

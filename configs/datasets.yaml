@@ -2,7 +2,8 @@
 prompts:
   curated:        {min: 200,  max: 200}
   agentshield:    {min: 500,  max: 560}
-  pids_bench:     {min: 5500, max: 6000}
+  # PIDS hard-benign contains exact duplicates removed by dedupe (5875 loaded -> 5212 kept)
+  pids_bench:     {min: 4951, max: 5473}
   neuralchemy:    {min: 200,  max: 500}
   prodnull:       {min: 500,  max: 500}
   ipi_arena:      {min: 90,   max: 100}

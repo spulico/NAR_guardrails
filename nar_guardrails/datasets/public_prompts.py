@@ -267,7 +267,7 @@ def _llmail_success(output) -> bool:
             return False
     if not isinstance(output, dict):
         return False
-    return bool(output.get("defense.undetected")) or bool(output.get("exfil.sent"))
+    return bool(output.get("exfil.sent"))
 
 
 def load_llmail(rows, cap, seed) -> list[Item]:
@@ -275,7 +275,7 @@ def load_llmail(rows, cap, seed) -> list[Item]:
     good = [r for r in rows if _llmail_success(r["objectives"] if r.get("objectives") is not None else r.get("output"))]
     ded = _dedupe(good, lambda r: f"Email subject: {r.get('subject', '')}\n\n{r.get('body', '')}")
     return _ensure_unique_ids([Item(id=f"llmail:{h}", track="prompts", text=text, label=1, scenario="I2", source="llmail",
-                                    split="test", meta={**_LLMAIL_META, "scenario": r.get("scenario"), "level": r.get("level")})
+                                    split="test", meta={**_LLMAIL_META, "scenario": r.get("scenario"), "level": r.get("scenario")})
                                for r, text, h in sample(ded, cap, seed)], "llmail")
 
 
@@ -375,7 +375,7 @@ HF_SOURCES = {
     "bells": {"dataset": "centrepourlasecuriteia/jailbreak-dataset", "config": None, "split": "train", "streaming": False,
               "cap": 500, "published": "2026-02", "license": "CC-BY-NC-SA-4.0", "gated": True, "loader": load_bells},
     "llmail": {"dataset": "microsoft/llmail-inject-challenge", "config": None, "split": "Phase2", "streaming": True,
-               "cap": 500, "published": "2025-05", "license": "MIT", "gated": False, "loader": load_llmail},
+               "cap": 500, "stream_limit": 150_000, "published": "2025-05", "license": "MIT", "gated": False, "loader": load_llmail},
     "pliny": {"dataset": "hackaprompt/Pliny_HackAPrompt_Dataset", "config": None, "split": "train", "streaming": False,
               "cap": 500, "published": "2025-07", "license": "CC-BY-4.0", "gated": True, "loader": load_pliny},
     "simsonsun": {"dataset": "Simsonsun/JailbreakPrompts", "config": None, "split": "Dataset_2", "streaming": False,

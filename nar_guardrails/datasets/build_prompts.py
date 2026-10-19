@@ -31,42 +31,57 @@ def _load_source(name: str, spec: dict, raw_dir: Path, seed: int) -> list[Item]:
         loader = spec["loader"]
         return loader(repo) if name != "mcptox" else loader(repo, cap=500, seed=seed)
     rows = hf_rows(spec["dataset"], spec.get("config"), spec.get("split", "train"), spec.get("streaming", False))
-    if spec.get("streaming"):
-        rows = itertools.islice(rows, STREAM_LIMIT)
-    return spec["loader"](rows, spec.get("cap"), seed)
+    try:
+        stream = itertools.islice(rows, spec.get("stream_limit", STREAM_LIMIT)) if spec.get("streaming") else rows
+        return spec["loader"](stream, spec.get("cap"), seed)
+    finally:
+        close = getattr(rows, "close", None)
+        if close:
+            close()
 
 
-def _dedupe(items: list[Item]) -> tuple[list[Item], int]:
-    seen, out, dropped = set(), [], 0
+def _dedupe(items: list[Item]) -> tuple[list[Item], dict, list[dict]]:
+    seen: dict[str, Item] = {}
+    out, dropped, conflicts = [], {}, []
     for it in items:
         h = text_sha(it.text)
-        if h in seen:
-            dropped += 1
+        first = seen.get(h)
+        if first is not None:
+            dropped[it.source] = dropped.get(it.source, 0) + 1
+            if first.label != it.label:
+                conflicts.append({"kept": first.id, "dropped": it.id})
             continue
-        seen.add(h)
+        seen[h] = it
         out.append(it)
-    return out, dropped
+    return out, dropped, conflicts
 
 
 def build_prompts(raw_dir: Path, out_path: Path, seed: int = 0, sources: dict | None = None, strict: bool = True) -> dict:
     sources = sources if sources is not None else default_sources()
     ranges = expected_ranges().get("prompts", {})
     items: list[Item] = list(load_curated_prompts())
-    counts, skipped, licenses = {"curated": len(items)}, {}, {"curated": "CC-BY-4.0"}
+    loaded_counts, skipped, licenses = {"curated": len(items)}, {}, {"curated": "CC-BY-4.0"}
+    stream_limits = {}
     for name, spec in sources.items():
         try:
             loaded = _load_source(name, spec, Path(raw_dir), seed)
         except Exception as e:
             skipped[name] = f"{type(e).__name__}: {e}"
             continue
-        counts[name] = len(loaded)
+        loaded_counts[name] = len(loaded)
         licenses[name] = spec.get("license")
+        if spec.get("streaming"):
+            stream_limits[name] = spec.get("stream_limit", STREAM_LIMIT)
         items.extend(loaded)
-    items, dropped = _dedupe(items)
+    items, dropped, conflicts = _dedupe(items)
+    kept = {n: 0 for n in loaded_counts}
+    for it in items:
+        kept[it.source] = kept.get(it.source, 0) + 1
     problems = [f"{n}: {c} not in [{ranges[n]['min']}, {ranges[n]['max']}]"
-                for n, c in counts.items() if n in ranges and not (ranges[n]["min"] <= c <= ranges[n]["max"])]
-    manifest = {"seed": seed, "counts": counts, "skipped": skipped, "licenses": licenses, "duplicates_dropped": dropped,
-                "range_problems": problems, "n_items": len(items)}
+                for n, c in kept.items() if n in ranges and not (ranges[n]["min"] <= c <= ranges[n]["max"])]
+    manifest = {"seed": seed, "strict": strict, "stream_limits": stream_limits, "loaded": loaded_counts, "counts": kept,
+                "dropped_duplicates": dropped, "label_conflicts": conflicts, "skipped": skipped, "licenses": licenses,
+                "duplicates_dropped": sum(dropped.values()), "range_problems": problems, "n_items": len(items)}
     if strict and problems:
         raise SystemExit("count validation failed:\n" + "\n".join(problems))
     items = assign_dev_test(items, 0.2, seed)
