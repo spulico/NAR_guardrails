@@ -271,7 +271,8 @@ def _llmail_success(output) -> bool:
 
 
 def load_llmail(rows, cap, seed) -> list[Item]:
-    good = [r for r in rows if _llmail_success(r.get("output"))]
+    # real Phase2 rows carry the objective flags (JSON string) in `objectives`; `output` is free text
+    good = [r for r in rows if _llmail_success(r["objectives"] if r.get("objectives") is not None else r.get("output"))]
     ded = _dedupe(good, lambda r: f"Email subject: {r.get('subject', '')}\n\n{r.get('body', '')}")
     return _ensure_unique_ids([Item(id=f"llmail:{h}", track="prompts", text=text, label=1, scenario="I2", source="llmail",
                                     split="test", meta={**_LLMAIL_META, "scenario": r.get("scenario"), "level": r.get("level")})

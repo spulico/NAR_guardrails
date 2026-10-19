@@ -1,0 +1,20 @@
+# expected item counts per source after loading (strict build fails outside [min, max])
+prompts:
+  curated:        {min: 200,  max: 200}
+  agentshield:    {min: 500,  max: 560}
+  pids_bench:     {min: 5500, max: 6000}
+  neuralchemy:    {min: 200,  max: 500}
+  prodnull:       {min: 500,  max: 500}
+  ipi_arena:      {min: 90,   max: 100}
+  bells:          {min: 1000, max: 1600}
+  mcp_guardbench: {min: 50,   max: 70}
+  llmail:         {min: 500,  max: 500}
+  pliny:          {min: 300,  max: 500}
+  simsonsun:      {min: 500,  max: 500}
+  mindgard:       {min: 500,  max: 500}
+  mcptox:         {min: 461,  max: 509}
+  wildchat:       {min: 1000, max: 1000}
+skills:
+  malicious_skill_bench: {min: 9700, max: 9740}
+  skillspector_fixtures: {min: 10,   max: 20}
+  curated_skills:        {min: 40,   max: 40}

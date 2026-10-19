@@ -1,4 +1,5 @@
 import argparse
+import json
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -18,6 +19,14 @@ def build_parser() -> argparse.ArgumentParser:
     r.add_argument("--throughput", action="store_true")
     r.add_argument("--data-dir", default="data/processed")
     r.add_argument("--results-dir", default="results")
+    d = sub.add_parser("data", help="dataset commands")
+    dsub = d.add_subparsers(dest="data_cmd")
+    b = dsub.add_parser("build")
+    b.add_argument("--track", required=True, choices=["prompts", "skills"])
+    b.add_argument("--raw-dir", default="data/raw")
+    b.add_argument("--out-dir", default="data/processed")
+    b.add_argument("--seed", type=int, default=0)
+    b.add_argument("--no-strict", action="store_true")
     return p
 
 
@@ -38,5 +47,15 @@ def main(argv: list[str] | None = None) -> int:
                             allow_dirty=args.allow_dirty, throughput=args.throughput,
                             data_dir=Path(args.data_dir), results_dir=Path(args.results_dir)))
         print(out)
+        return 0
+    if args.cmd == "data" and args.data_cmd == "build":
+        from pathlib import Path
+        if args.track == "prompts":
+            from nar_guardrails.datasets.build_prompts import build_prompts
+            m = build_prompts(Path(args.raw_dir), Path(args.out_dir) / "prompts.jsonl", seed=args.seed, strict=not args.no_strict)
+        else:
+            from nar_guardrails.datasets.build_skills import build_skills
+            m = build_skills(Path(args.raw_dir), Path(args.out_dir) / "skills.jsonl", seed=args.seed, strict=not args.no_strict)
+        print(json.dumps(m, indent=2))
         return 0
     return 0

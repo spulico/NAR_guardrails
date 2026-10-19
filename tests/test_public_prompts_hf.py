@@ -111,3 +111,12 @@ def test_mindgard_exact_column_wins_and_missing_raises_and_encoded_flag():
 def test_llmail_skips_invalid_json_output():
     row = {"subject": "s", "body": "b", "output": "{not json"}
     assert load_llmail([row], cap=None, seed=0) == []
+
+
+def test_llmail_reads_success_flags_from_real_objectives_column():
+    obj_ok = '{"email.retrieved": true, "defense.undetected": true, "exfil.sent": false}'
+    obj_bad = '{"email.retrieved": true, "defense.undetected": false, "exfil.sent": false}'
+    rows = [{"subject": "s1", "body": "b1", "objectives": obj_ok, "output": "Processed example output for prompt: s1"},
+            {"subject": "s2", "body": "b2", "objectives": obj_bad, "output": "Processed example output for prompt: s2"}]
+    items = load_llmail(rows, cap=None, seed=0)
+    assert len(items) == 1 and "s1" in items[0].text
