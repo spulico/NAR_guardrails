@@ -32,15 +32,22 @@ def _split_map(rows: Iterable[dict]) -> dict[str, str]:
 
 
 def _category(row: dict) -> str:
+    if int(row.get("label", 0)) == 0:
+        return "benign"
     for k in ("attack_category", "attack_category_name", "harmonized_attack_category", "attack_category_code"):
         v = row.get(k)
         if v:
             return str(v)
-    return "benign" if int(row.get("label", 0)) == 0 else "unknown"
+    return "unknown"
 
 
 def load_malicious_skill_bench(rows: Iterable[dict], split_tables: dict[str, Iterable[dict]]) -> list[Item]:
     maps = {p: _split_map(t) for p, t in split_tables.items()}
+    rows = list(rows)
+    seen: set[str] = set()
+    dups = sorted({str(r["benchmark_id"]) for r in rows if str(r["benchmark_id"]) in seen or seen.add(str(r["benchmark_id"]))})
+    if dups:
+        raise ValueError(f"duplicate benchmark_id values: {dups[:20]}")
     items = []
     for r in rows:
         text = r.get("skill_text") or r.get("public_skill_text")

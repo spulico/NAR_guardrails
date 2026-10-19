@@ -45,3 +45,14 @@ def test_real_manifest_shape_maps_validation_and_keeps_excluded():
             "SD": [{"benchmark_id": "MSB-0001", "label": 1, "source_id": "SRC003", "split": "excluded"}]}
     [it] = load_malicious_skill_bench(ROWS[:1], real)
     assert it.split == "val" and it.meta["splits"] == {"MSD": "val", "SD": "excluded"}
+
+
+def test_duplicate_benchmark_id_raises():
+    with pytest.raises(ValueError, match="MSB-0001"):
+        load_malicious_skill_bench(ROWS + [dict(ROWS[0])], SPLITS)
+
+
+def test_benign_row_ignores_stray_category():
+    rows = [dict(ROWS[1], benchmark_id="MSB-0050", attack_category="Credential Access")]
+    [it] = load_malicious_skill_bench(rows, {"MSD": [], "SD": []})
+    assert it.scenario == "benign"
