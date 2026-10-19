@@ -36,8 +36,15 @@ def basic_metrics(y: list[int], scores: list[float], threshold: float) -> dict:
     n_pos, n_neg = tp + fn, fp + tn
     recall = tp / n_pos if n_pos else float("nan")
     fpr = fp / n_neg if n_neg else float("nan")
-    precision = tp / (tp + fp) if (tp + fp) else 0.0
-    f1 = (2 * precision * recall / (precision + recall)) if (precision + recall) and not math.isnan(recall) else 0.0
+    precision = tp / (tp + fp) if (tp + fp) else float("nan")
+    if math.isnan(recall):
+        f1 = float("nan")
+    elif recall == 0.0:
+        f1 = 0.0
+    elif not math.isnan(precision) and precision + recall > 0:
+        f1 = 2 * precision * recall / (precision + recall)
+    else:
+        f1 = 0.0
     return {"threshold": threshold, "recall": recall, "fpr": fpr, "precision": precision, "f1": f1,
             "tp": tp, "fp": fp, "tn": tn, "fn": fn, "n_pos": n_pos, "n_neg": n_neg}
 
@@ -49,6 +56,8 @@ def auroc(y: list[int], scores: list[float]) -> float | None:
 
 
 def fpr_at_recall(y: list[int], scores: list[float], target: float) -> tuple[float, float]:
+    if not (0 < target <= 1):
+        raise ValueError(f"target recall must satisfy 0 < target <= 1, got {target}")
     pos = sorted((s for s, l in zip(scores, y) if l == 1), reverse=True)
     if not pos:
         return float("nan"), float("nan")
@@ -58,6 +67,8 @@ def fpr_at_recall(y: list[int], scores: list[float], target: float) -> tuple[flo
 
 
 def precision_at_prevalence(recall: float, fpr: float, prevalence: float) -> float:
+    if math.isnan(recall) or math.isnan(fpr):
+        return float("nan")
     tp = recall * prevalence
     fp = fpr * (1.0 - prevalence)
     return tp / (tp + fp) if (tp + fp) > 0 else 0.0

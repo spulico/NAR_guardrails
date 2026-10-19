@@ -1,3 +1,4 @@
+import math
 import pytest
 from nar_guardrails.schema import Item, Verdict
 from nar_guardrails.bench.metrics import usable, basic_metrics, auroc, fpr_at_recall, precision_at_prevalence, bootstrap_ci
@@ -42,3 +43,32 @@ def test_usable_filters_errors_and_falls_back_to_label():
           Verdict("i2", "d", "p", None, None, "error"), Verdict("i3", "d", "p", 1.0, 1, "refused")]
     y, s, ids = usable(items, vs)
     assert ids == ["i0", "i1", "i3"] and s == [0.2, 1.0, 1.0] and y == [0, 1, 1]
+
+
+def test_undefined_metrics_are_nan_not_zero():
+    m = basic_metrics([0, 0], [0.1, 0.2], 0.5)   # no positives: recall undefined
+    assert math.isnan(m["recall"]) and math.isnan(m["precision"]) and math.isnan(m["f1"])
+    m = basic_metrics([1, 1], [0.1, 0.2], 0.5)   # positives exist, none flagged
+    assert m["recall"] == 0.0 and math.isnan(m["precision"]) and m["f1"] == 0.0
+    assert math.isnan(precision_at_prevalence(float("nan"), 0.1, 0.5))
+
+
+def test_bootstrap_ci_ignores_single_class_resamples():
+    y = [1] + [0] * 9   # one positive in ten: many resamples contain no positive
+    s = [0.9, 0.1, 0.2, 0.3, 0.4, 0.05, 0.15, 0.25, 0.35, 0.45]
+    stat = lambda yy, ss: basic_metrics(yy, ss, 0.5)["f1"]
+    lo, hi = bootstrap_ci(y, s, stat, n_boot=300, seed=0)
+    assert not (math.isnan(lo) and math.isnan(hi))
+    assert math.isfinite(lo) and math.isfinite(hi)
+
+
+def test_fpr_at_recall_rejects_out_of_range_target():
+    with pytest.raises(ValueError):
+        fpr_at_recall(Y, S, 0)
+    with pytest.raises(ValueError):
+        fpr_at_recall(Y, S, 1.5)
+
+
+def test_tied_negative_at_threshold_counts_as_false_positive():
+    m = basic_metrics([1, 0], [0.6, 0.6], 0.6)
+    assert m["fpr"] == pytest.approx(1.0) and m["recall"] == pytest.approx(1.0)
