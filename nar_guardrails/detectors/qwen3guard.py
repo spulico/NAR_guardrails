@@ -71,9 +71,10 @@ class Qwen3GuardDetector(Detector):
         # trust_remote_code executes Hub code: pin `revision` in configs/models.yaml.
         self.tok = AutoTokenizer.from_pretrained(cfg["model_id"], trust_remote_code=True,
                                                  revision=rev)
-        # The remote code reads config.pad_token_id, which transformers 5 no longer defaults.
+        # The remote code reads config.pad_token_id; transformers 5 no longer defaults it. This only
+        # guarantees the attribute exists (value None if unset).
         config = AutoConfig.from_pretrained(cfg["model_id"], trust_remote_code=True, revision=rev)
-        if getattr(config, "pad_token_id", None) is None:
+        if not hasattr(config, "pad_token_id"):
             config.pad_token_id = None
         self.model = AutoModel.from_pretrained(cfg["model_id"], trust_remote_code=True,
                                                revision=rev, config=config,
@@ -91,15 +92,26 @@ class Qwen3GuardDetector(Detector):
         ids = self.tok(prompt, return_tensors="pt").input_ids[0]
         im_end = self.tok.convert_tokens_to_ids("<|im_end|>")
         end = (ids == im_end).nonzero()[0].item()
-        with torch.no_grad():
-            result, state = self.model.stream_moderate_from_ids(
-                ids[: end + 1].to(self.device), role="user", stream_state=None)
-        self.model.close_stream(state)
-        risk = result["risk_level"][-1]
-        category = result.get("category")
-        category = category[-1] if isinstance(category, (list, tuple)) and category else category
-        probs = result.get("probs")
-        return {"label": str(risk), "probs": probs if isinstance(probs, dict) else None,
+        state = None
+        try:
+            with torch.no_grad():
+                result, state = self.model.stream_moderate_from_ids(
+                    ids[: end + 1].to(self.device), role="user", stream_state=None)
+            risk = str(result["risk_level"][-1])
+            category = result.get("category")
+            category = category[-1] if isinstance(category, (list, tuple)) and category else category
+            rp = result.get("risk_prob")
+            rp = float(rp[-1] if isinstance(rp, (list, tuple)) else rp) if rp is not None else None
+        finally:
+            if state is not None:
+                self.model.close_stream(state)
+        # risk_prob is the probability of the predicted class only; derive a binary Safe/Unsafe split.
+        probs = None
+        if rp is not None and risk.lower() == "safe":
+            probs = {"Safe": rp, "Unsafe": 1.0 - rp}
+        elif rp is not None and risk.lower() == "unsafe":
+            probs = {"Safe": 1.0 - rp, "Unsafe": rp}
+        return {"label": risk, "probs": probs, "risk_prob": rp,
                 "category": None if category is None else str(category)}
 
     def predict_texts(self, texts: list[str]) -> list[Prediction]:
