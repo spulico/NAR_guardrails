@@ -5,7 +5,10 @@ import json
 def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(prog="nar", description="NAR guardrails lab")
     sub = p.add_subparsers(dest="cmd")
-    sub.add_parser("smoke", help="run every configured detector on 20 items per track")
+    sm = sub.add_parser("smoke", help="run every configured detector on a few items per track")
+    sm.add_argument("--results-dir", default="results")
+    sm.add_argument("--detectors", default="all", help="comma-separated keys or 'all'")
+    sm.add_argument("--n", type=int, default=20)
     r = sub.add_parser("run", help="run detectors on a track/split")
     r.add_argument("--track", required=True, choices=["prompts", "skills"])
     r.add_argument("--split", required=True)
@@ -52,6 +55,13 @@ def main(argv: list[str] | None = None) -> int:
                             allow_dirty=args.allow_dirty, throughput=args.throughput,
                             data_dir=Path(args.data_dir), results_dir=Path(args.results_dir)))
         print(out)
+        return 0
+    if args.cmd == "smoke":
+        from pathlib import Path
+        from nar_guardrails.bench.smoke import smoke, load_models_cfg
+        dets = None if args.detectors == "all" else args.detectors.split(",")
+        df = smoke(load_models_cfg(), Path(args.results_dir), n=args.n, detectors=dets)
+        print(df.to_string(index=False))
         return 0
     if args.cmd == "report":
         from pathlib import Path
