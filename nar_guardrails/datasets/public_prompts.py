@@ -6,7 +6,7 @@ import re
 from pathlib import Path
 
 from nar_guardrails.datasets.fetch import sample
-from nar_guardrails.schema import Item
+from nar_guardrails.schema import Item, text_sha
 
 TEXT_COLS = ("text", "prompt", "input", "input_text", "content")
 LABEL_COLS = ("label", "is_injection", "is_malicious", "y", "target")
@@ -160,6 +160,19 @@ GIT_SOURCES = {
 }
 
 
+def _dedupe(rows, text_of):
+    """Drop rows whose text hash was already seen; return [(row, text, hash)] in order."""
+    seen, out = set(), []
+    for r in rows:
+        text = text_of(r)
+        h = text_sha(text)[:12]
+        if h in seen:
+            continue
+        seen.add(h)
+        out.append((r, text, h))
+    return out
+
+
 # ---------------- neuralchemy/Prompt-injection-dataset (core, test) ----------------
 _NC_META = {"license": "Apache-2.0", "published": "2026-01"}
 _NC_OLD = re.compile(r"harmbench|wildguard|hackaprompt|judge", re.I)
@@ -171,13 +184,13 @@ _NC_SCENARIO = {"direct_injection": "D1", "system_extraction": "D2", "prompt_lea
 def load_neuralchemy(rows, cap, seed) -> list[Item]:
     kept = [r for r in rows if not _NC_OLD.search(str(r.get("source", "")))]
     items = []
-    for n, r in enumerate(sample(kept, cap, seed)):
+    for r, text, h in sample(_dedupe(kept, lambda r: r["text"]), cap, seed):
         label = int(r["label"])
         if label == 0:
             scenario = "B2" if any("hard" in str(t).lower() for t in (r.get("tags") or [])) else "B1"
         else:
             scenario = _NC_SCENARIO.get(str(r.get("category")), "unknown")
-        items.append(Item(id=f"neuralchemy:{n}", track="prompts", text=r["text"], label=label, scenario=scenario,
+        items.append(Item(id=f"neuralchemy:{h}", track="prompts", text=text, label=label, scenario=scenario,
                           source="neuralchemy", split="test", meta={**_NC_META, "category": r.get("category"), "orig_source": r.get("source")}))
     return _ensure_unique_ids(items, "neuralchemy")
 
@@ -187,14 +200,14 @@ _PN_META = {"license": "Apache-2.0", "published": "2026-03", "gated": True}
 
 
 def load_prodnull(rows, cap, seed) -> list[Item]:
-    rows = list(rows)
-    pos = [r for r in rows if int(r["label"]) == 1]
-    neg = [r for r in rows if int(r["label"]) == 0]
+    ded = _dedupe(rows, lambda r: r["text"])
+    pos = [t for t in ded if int(t[0]["label"]) == 1]
+    neg = [t for t in ded if int(t[0]["label"]) == 0]
     half = None if cap is None else cap // 2
     chosen = sample(pos, half, seed) + sample(neg, None if cap is None else cap - (half or 0), seed + 1)
-    return _ensure_unique_ids([Item(id=f"prodnull:{n}", track="prompts", text=r["text"], label=int(r["label"]),
-                 scenario="I5" if int(r["label"]) else "B3", source="prodnull", split="test", meta=dict(_PN_META))
-            for n, r in enumerate(chosen)], "prodnull")
+    return _ensure_unique_ids([Item(id=f"prodnull:{h}", track="prompts", text=text, label=int(r["label"]),
+                                    scenario="I5" if int(r["label"]) else "B3", source="prodnull", split="test", meta=dict(_PN_META))
+                               for r, text, h in chosen], "prodnull")
 
 
 # ---------------- sureheremarv/ipi_arena_attacks ----------------
@@ -202,26 +215,44 @@ _IPI_META = {"license": "MIT", "published": "2026-03"}
 
 
 def load_ipi_arena(rows, cap, seed) -> list[Item]:
-    return _ensure_unique_ids([Item(id=f"ipi_arena:{r['behavior_id']}:{n}", track="prompts", text=r["attack"], label=1, scenario="I1",
-                 source="ipi_arena", split="test", meta={**_IPI_META, "behavior": r["behavior_id"]})
-            for n, r in enumerate(sample(list(rows), cap, seed))], "ipi_arena")
+    return _ensure_unique_ids([Item(id=f"ipi_arena:{h}", track="prompts", text=text, label=1, scenario="I1",
+                                    source="ipi_arena", split="test", meta={**_IPI_META, "behavior": r["behavior_id"]})
+                               for r, text, h in sample(_dedupe(rows, lambda r: r["attack"]), cap, seed)], "ipi_arena")
 
 
 # ---------------- centrepourlasecuriteia/jailbreak-dataset (BELLS) ----------------
 _BELLS_META = {"license": "CC-BY-NC-SA-4.0", "published": "2026-02", "gated": True}
+_BELLS_J1 = ("cognitive", "psycholog", "few_shot", "fsh", "distract", "dap")
+
+
+def _bells_scenario(r) -> str:
+    if str(r.get("category", "")).lower() == "benign":
+        return "B2"
+    tt = str(r.get("technique_type", "")).lower()
+    return "J1" if any(k in tt for k in _BELLS_J1) else "J2"
 
 
 def load_bells(rows, cap, seed) -> list[Item]:
+    """Harmful and benign-origin rows are each sampled to at most `cap`.
+
+    The dataset `id` is the hash of the base prompt shared by its transformed variants,
+    so item ids are `bells:<id>:<technique>` (plus `:<row n>` if that still collides).
+    """
     rows = list(rows)
     benign = [r for r in rows if str(r.get("category", "")).lower() == "benign"]
     harmful = [r for r in rows if str(r.get("category", "")).lower() != "benign"]
-    chosen = sample(harmful, cap, seed) + benign
-    return _ensure_unique_ids([Item(id=f"bells:{r['id']}", track="prompts", text=r["jailbreak_prompt"],
-                 label=0 if str(r.get("category", "")).lower() == "benign" else 1,
-                 scenario="B2" if str(r.get("category", "")).lower() == "benign" else "J2",
-                 source="bells", split="test",
-                 meta={**_BELLS_META, "technique": r.get("technique"), "technique_type": r.get("technique_type"), "category": r.get("category")})
-            for r in chosen], "bells")
+    chosen = sample(harmful, cap, seed) + sample(benign, cap, seed + 1)
+    items, seen = [], set()
+    for n, r in enumerate(chosen):
+        iid = f"bells:{r['id']}:{r.get('technique') or n}"
+        if iid in seen:
+            iid = f"{iid}:{n}"
+        seen.add(iid)
+        benign_row = str(r.get("category", "")).lower() == "benign"
+        items.append(Item(id=iid, track="prompts", text=r["jailbreak_prompt"], label=0 if benign_row else 1,
+                          scenario=_bells_scenario(r), source="bells", split="test",
+                          meta={**_BELLS_META, "technique": r.get("technique"), "technique_type": r.get("technique_type"), "category": r.get("category")}))
+    return _ensure_unique_ids(items, "bells")
 
 
 # ---------------- microsoft/llmail-inject-challenge (Phase2) ----------------
@@ -241,10 +272,10 @@ def _llmail_success(output) -> bool:
 
 def load_llmail(rows, cap, seed) -> list[Item]:
     good = [r for r in rows if _llmail_success(r.get("output"))]
-    return _ensure_unique_ids([Item(id=f"llmail:{n}", track="prompts", text=f"Email subject: {r.get('subject', '')}\n\n{r.get('body', '')}",
-                 label=1, scenario="I2", source="llmail", split="test",
-                 meta={**_LLMAIL_META, "scenario": r.get("scenario"), "level": r.get("level")})
-            for n, r in enumerate(sample(good, cap, seed))], "llmail")
+    ded = _dedupe(good, lambda r: f"Email subject: {r.get('subject', '')}\n\n{r.get('body', '')}")
+    return _ensure_unique_ids([Item(id=f"llmail:{h}", track="prompts", text=text, label=1, scenario="I2", source="llmail",
+                                    split="test", meta={**_LLMAIL_META, "scenario": r.get("scenario"), "level": r.get("level")})
+                               for r, text, h in sample(ded, cap, seed)], "llmail")
 
 
 # ---------------- hackaprompt/Pliny_HackAPrompt_Dataset ----------------
@@ -276,24 +307,38 @@ _SIM_META = {"license": "MIT", "published": "2025-06"}
 
 
 def load_simsonsun(rows, cap, seed) -> list[Item]:
-    return _ensure_unique_ids([Item(id=f"simsonsun:{n}", track="prompts", text=r["Prompt"], label=1, scenario="J1", source="simsonsun",
-                 split="test", meta={**_SIM_META, "orig_source": r.get("Source")})
-            for n, r in enumerate(sample(list(rows), cap, seed))], "simsonsun")
+    return _ensure_unique_ids([Item(id=f"simsonsun:{h}", track="prompts", text=text, label=1, scenario="J1", source="simsonsun",
+                                    split="test", meta={**_SIM_META, "orig_source": r.get("Source")})
+                               for r, text, h in sample(_dedupe(rows, lambda r: r["Prompt"]), cap, seed)], "simsonsun")
 
 
 # ---------------- Mindgard/evaded-prompt-injection-and-jailbreak-samples ----------------
 _MG_META = {"license": "CC-BY-NC-4.0", "published": "2025-04", "gated": True}
+_MG_EXACT = ("modified_prompt", "modified", "transformed_prompt", "evaded_prompt", "adversarial_prompt", "attack_prompt")
+
+
+def _mg_column(r: dict) -> str:
+    for k in _MG_EXACT:
+        if k in r:
+            return k
+    for k in r:
+        if "original" not in k.lower() and re.search(r"modif|transform|alter|evad", k, re.I):
+            return k
+    raise KeyError(f"mindgard row has no modified-prompt column; keys: {sorted(r)}")
 
 
 def load_mindgard(rows, cap, seed) -> list[Item]:
+    prepared = [(r, str(r[_mg_column(r)])) for r in rows]
     items = []
-    for n, r in enumerate(sample(list(rows), cap, seed)):
-        mod_key = next((k for k in r if re.search(r"modif|transform|alter|evad", k, re.I)), None)
-        if mod_key is None:
-            raise KeyError(f"mindgard row has no modified-prompt column; keys: {sorted(r)}")
-        items.append(Item(id=f"mindgard:{n}", track="prompts", text=str(r[mod_key]), label=1, scenario="J2",
-                          source="mindgard", split="test", meta={**_MG_META, "attack_name": r.get("attack_name")}))
-    return _ensure_unique_ids(items, "mindgard")
+    for (r, _), text, h in _dedupe(prepared, lambda p: p[1]):
+        name = str(r.get("attack_name") or "")
+        encoded = any(k in name.lower() for k in ("emoji", "base64"))
+        meta = {**_MG_META, "attack_name": r.get("attack_name")}
+        if encoded:
+            meta["encoded"] = True
+        items.append(Item(id=f"mindgard:{h}", track="prompts", text=text, label=1, scenario="J2", source="mindgard",
+                          split="test", meta=meta))
+    return _ensure_unique_ids(sample(items, cap, seed), "mindgard")
 
 
 # ---------------- allenai/WildChat-4.8M (benign user turns) ----------------
@@ -301,6 +346,9 @@ _WC_META = {"license": "ODC-BY", "published": "2025-08"}
 
 
 def load_wildchat(rows, cap, seed) -> list[Item]:
+    """Benign first user turns. The candidate scan stops at max(cap or 1000, 1000) * 5 rows,
+    so when `rows` is a stream the sample is drawn from the head of the stream."""
+    limit = max(cap or 1000, 1000) * 5
     good = []
     for r in rows:
         if str(r.get("language", "")).lower() != "english" or r.get("toxic"):
@@ -309,10 +357,11 @@ def load_wildchat(rows, cap, seed) -> list[Item]:
         first = next((m.get("content") for m in conv if m.get("role") == "user"), None)
         if isinstance(first, str) and 20 <= len(first) <= 2000:
             good.append(first)
-        if cap is not None and len(good) >= cap * 5:
+        if len(good) >= limit:
             break
-    return _ensure_unique_ids([Item(id=f"wildchat:{n}", track="prompts", text=t, label=0, scenario="B1", source="wildchat", split="test",
-                 meta=dict(_WC_META)) for n, t in enumerate(sample(good, cap, seed))], "wildchat")
+    return _ensure_unique_ids([Item(id=f"wildchat:{h}", track="prompts", text=t, label=0, scenario="B1", source="wildchat",
+                                    split="test", meta=dict(_WC_META))
+                               for _r, t, h in sample(_dedupe(good, lambda t: t), cap, seed)], "wildchat")
 
 
 HF_SOURCES = {

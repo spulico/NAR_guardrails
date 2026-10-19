@@ -1,4 +1,5 @@
 import json
+import pytest
 from nar_guardrails.datasets.public_prompts import (load_neuralchemy, load_prodnull, load_ipi_arena, load_bells,
                                                      load_llmail, load_pliny, load_simsonsun, load_mindgard,
                                                      load_wildchat, HF_SOURCES)
@@ -24,7 +25,7 @@ def test_prodnull_balanced_cap_and_scenarios():
 
 def test_ipi_arena_all_rows_positive():
     items = load_ipi_arena([{"behavior_id": "book-hotel", "attack": "<system>do x</system>"}], cap=None, seed=0)
-    assert items[0].id == "ipi_arena:book-hotel:0" and items[0].label == 1 and items[0].scenario == "I1"
+    assert items[0].id.startswith("ipi_arena:") and items[0].meta["behavior"] == "book-hotel" and items[0].label == 1 and items[0].scenario == "I1"
 
 
 def test_bells_benign_origin_is_label_zero():
@@ -32,8 +33,8 @@ def test_bells_benign_origin_is_label_zero():
             {"id": "b1", "prompt": "p", "category": "Benign", "origin": "handcrafted", "jailbreak_prompt": "b64 of recipe", "technique": "to_base64", "technique_type": "encoding_cyphering"}]
     items = load_bells(rows, cap=500, seed=0)
     by = {i.id: i for i in items}
-    assert by["bells:h1"].label == 1 and by["bells:h1"].scenario == "J2"
-    assert by["bells:b1"].label == 0 and by["bells:b1"].scenario == "B2"
+    assert by["bells:h1:to_base64"].label == 1 and by["bells:h1:to_base64"].scenario == "J2"
+    assert by["bells:b1:to_base64"].label == 0 and by["bells:b1:to_base64"].scenario == "B2"
 
 
 def test_llmail_keeps_only_successful_and_builds_email_text():
@@ -68,3 +69,45 @@ def test_hf_sources_registry():
     assert set(HF_SOURCES) == {"neuralchemy", "prodnull", "ipi_arena", "bells", "llmail", "pliny", "simsonsun", "mindgard", "wildchat"}
     for s in HF_SOURCES.values():
         assert s["published"] >= "2025-01" and callable(s["loader"]) and "dataset" in s
+
+
+def _bells(i, tech="to_base64", cat="Cyber", tt="encoding_cyphering"):
+    return {"id": i, "category": cat, "jailbreak_prompt": f"{i}-{tech}-{cat}", "technique": tech, "technique_type": tt}
+
+
+def test_bells_ids_unique_for_shared_base_id_and_technique():
+    items = load_bells([_bells("x", "a"), _bells("x", "b")], cap=10, seed=0)
+    assert {i.id for i in items} == {"bells:x:a", "bells:x:b"}
+    rows = [dict(_bells("x", "a"), jailbreak_prompt="p1"), dict(_bells("x", "a"), jailbreak_prompt="p2")]
+    assert len({i.id for i in load_bells(rows, cap=10, seed=0)}) == 2
+
+
+def test_bells_benign_capped_and_scenario_families():
+    rows = [_bells(f"b{k}", cat="Benign") for k in range(10)]
+    assert len(load_bells(rows, cap=3, seed=0)) == 3
+    fam = load_bells([_bells("c", tt="cognitive_psychological"), _bells("f", tt="few_shot_hacking"),
+                      _bells("d", tt="distract_and_persuade"), _bells("e", tt="low_resource_language")], cap=10, seed=0)
+    assert {i.id.split(":")[1]: i.scenario for i in fam} == {"c": "J1", "f": "J1", "d": "J1", "e": "J2"}
+
+
+def test_index_free_ids_stable_across_cap_and_dedupe():
+    rows = [{"Source": "r", "Prompt": "same"}, {"Source": "r", "Prompt": "same"}, {"Source": "r", "Prompt": "other"}]
+    full = load_simsonsun(rows, cap=None, seed=0)
+    assert len(full) == 2
+    one = load_simsonsun(rows, cap=1, seed=0)
+    assert len(one) == 1 and one[0].id in {i.id for i in full}
+    same = {i.text: i.id for i in full}
+    assert one[0].id == same[one[0].text]
+
+
+def test_mindgard_exact_column_wins_and_missing_raises_and_encoded_flag():
+    row = {"original_modified_flag": "no", "modified_prompt": "evaded", "attack_name": "Emoji Smuggling"}
+    m = load_mindgard([row], cap=None, seed=0)
+    assert m[0].text == "evaded" and m[0].meta["encoded"] is True
+    with pytest.raises(KeyError):
+        load_mindgard([{"original_prompt": "x", "attack_name": "a"}], cap=None, seed=0)
+
+
+def test_llmail_skips_invalid_json_output():
+    row = {"subject": "s", "body": "b", "output": "{not json"}
+    assert load_llmail([row], cap=None, seed=0) == []
