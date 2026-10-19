@@ -28,9 +28,9 @@ class VerdictCache:
         self._entries: dict[str, tuple[str, Verdict]] = {}
         if not self.path.exists():
             return
-        with self.path.open(encoding="utf-8") as f:
-            # split on "\n" only: json.dumps(ensure_ascii=False) may leave U+2028 etc. inside a line
-            lines = f.read().split("\n")
+        # bytes + errors="replace": a torn write may cut a multibyte character; that line then fails to parse
+        # and is handled as a torn tail. Split on "\n" only: json.dumps(ensure_ascii=False) may leave U+2028 etc.
+        lines = self.path.read_bytes().decode("utf-8", errors="replace").split("\n")
         last = max((i for i, line in enumerate(lines) if line.strip()), default=-1)
         for i, line in enumerate(lines):
             if not line.strip():
@@ -59,21 +59,32 @@ class VerdictCache:
         rows = [(i, v) for i, v in zip(items, verdicts, strict=True)]
         self._append(rows)
 
-    def _repair_unterminated_tail(self) -> None:
-        """If the file ends without a newline, either terminate a complete record or drop a torn one."""
+    def _repair_tail(self) -> None:
+        """Make the last line safe to append after.
+
+        A last line that does not parse is truncated away (it is a torn write or garbage). A complete record
+        without a trailing newline is terminated. Only the last line is ever touched.
+        """
         data = self.path.read_bytes()
-        if not data or data.endswith(b"\n"):
+        if not data:
             return
-        cut = data.rfind(b"\n") + 1
-        fragment = data[cut:].decode("utf-8", errors="replace")
+        body = data[:-1] if data.endswith(b"\n") else data
+        cut = body.rfind(b"\n") + 1
+        fragment = body[cut:].decode("utf-8", errors="replace")
+        if not fragment.strip():
+            if not data.endswith(b"\n"):
+                with self.path.open("ab") as f:
+                    f.write(b"\n")
+            return
         try:
             _parse(fragment)
         except (ValueError, KeyError, TypeError):
             with self.path.open("r+b") as f:
                 f.truncate(cut)
         else:
-            with self.path.open("ab") as f:
-                f.write(b"\n")
+            if not data.endswith(b"\n"):
+                with self.path.open("ab") as f:
+                    f.write(b"\n")
 
     def _append(self, rows: list[tuple[Item, Verdict]]) -> None:
         # serialise everything before touching the file; default=str keeps non-JSON raw values writable
@@ -85,7 +96,7 @@ class VerdictCache:
             records.append((item.id, sha, verdict, line))
         self.path.parent.mkdir(parents=True, exist_ok=True)
         if self.path.exists():
-            self._repair_unterminated_tail()
+            self._repair_tail()
         with self.path.open("a", encoding="utf-8") as f:
             for item_id, sha, verdict, line in records:
                 f.write(line)

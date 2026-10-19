@@ -122,3 +122,31 @@ def test_put_many_length_mismatch_raises_before_writing(tmp_path: Path):
     with pytest.raises(ValueError):
         c.put_many(items, [_v("i0", 0.1)])
     assert len(c) == 0 and not p.exists()
+
+
+def test_torn_multibyte_tail_loads_and_is_repaired(tmp_path: Path):
+    p = tmp_path / "c.jsonl"
+    a = Item(id="i0", track="prompts", text="t0", label=0)
+    new = Item(id="i1", track="prompts", text="t1", label=0)
+    p.write_bytes(_line_for(tmp_path, a, 0.1).encode("utf-8") + b'{"item_id": "x", "text_sha": "\xc3')
+    c = VerdictCache(p)
+    assert len(c) == 1
+    assert c.get(a).p_malicious == 0.1
+    c.put(new, _v("i1", 0.6))
+    reloaded = VerdictCache(p)
+    assert len(reloaded) == 2
+    assert reloaded.get(new).p_malicious == 0.6
+
+
+def test_garbage_last_line_with_newline_is_repaired_on_append(tmp_path: Path):
+    p = tmp_path / "c.jsonl"
+    a = Item(id="i0", track="prompts", text="t0", label=0)
+    new = Item(id="i1", track="prompts", text="t1", label=0)
+    p.write_text(_line_for(tmp_path, a, 0.1) + "garbage\n", encoding="utf-8")
+    c = VerdictCache(p)
+    assert len(c) == 1
+    c.put(new, _v("i1", 0.8))
+    reloaded = VerdictCache(p)
+    assert len(reloaded) == 2
+    assert reloaded.get(a).p_malicious == 0.1
+    assert reloaded.get(new).p_malicious == 0.8
