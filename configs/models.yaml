@@ -85,6 +85,12 @@ detectors:
     optional: true
     batch_size: 1
     tracks: [prompts, skills]
+  basal-2.0-mini:
+    adapter: openjev
+    url: http://127.0.0.1:8000/v1/systemone
+    optional: true
+    batch_size: 1
+    tracks: [prompts, skills]
   claude-haiku-5-5:
     adapter: claude
     model_id: claude-haiku-5-5
