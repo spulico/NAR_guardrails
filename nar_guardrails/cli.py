@@ -59,10 +59,13 @@ def main(argv: list[str] | None = None) -> int:
     if args.cmd == "smoke":
         from pathlib import Path
         from nar_guardrails.bench.smoke import smoke, load_models_cfg
-        dets = None if args.detectors == "all" else args.detectors.split(",")
+        dets = None if args.detectors == "all" else [d.strip() for d in args.detectors.split(",")]
         df = smoke(load_models_cfg(), Path(args.results_dir), n=args.n, detectors=dets)
-        print(df.to_string(index=False))
-        return 0
+        shown = df.copy()
+        shown["reason"] = shown["reason"].map(lambda r: r if not isinstance(r, str) else r[:60])
+        print(shown.to_string(index=False))
+        bad = (df["status"] == "failed") | ((df["status"] == "degraded") & (df["n_ok"] == 0))
+        return 1 if bad.any() else 0
     if args.cmd == "report":
         from pathlib import Path
         from nar_guardrails.report.build import build_report

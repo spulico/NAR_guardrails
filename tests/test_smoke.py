@@ -15,3 +15,41 @@ def test_cli_smoke_exits_zero(monkeypatch, tmp_path, capsys):
     monkeypatch.setattr("nar_guardrails.bench.smoke.load_models_cfg", lambda: {"fake": {"adapter": "fake", "tracks": ["prompts", "skills"]}})
     assert main(["smoke", "--results-dir", str(tmp_path), "--detectors", "fake"]) == 0
     assert "fake" in capsys.readouterr().out
+
+
+def _fake_cfg():
+    return {"fake": {"adapter": "fake", "tracks": ["prompts", "skills"]}}
+
+
+def test_smoke_does_not_touch_shared_cache_or_latest(tmp_path: Path):
+    df = smoke(_fake_cfg(), tmp_path, n=6, detectors=["fake"])
+    assert not (tmp_path / "results" / "cache").exists() and not (tmp_path / "cache").exists()
+    assert not (tmp_path / "LATEST").exists()
+    run_dirs = [d for d in tmp_path.iterdir() if d.name.startswith("smoke-")]
+    assert len(run_dirs) == 2 and all((d / "cache").is_dir() for d in run_dirs)
+    assert "separates" in df.columns
+
+
+def test_smoke_accepts_all_and_whitespace(tmp_path: Path):
+    df = smoke(_fake_cfg(), tmp_path, n=4, detectors=["all", " fake "])
+    assert set(df["detector"]) == {"fake"}
+
+
+def _register_broken():
+    from nar_guardrails.detectors.base import Detector, Prediction, register
+
+    @register("always_error_test")
+    class Broken(Detector):
+        def predict_texts(self, texts):
+            return [Prediction(None, None, "error", None, "boom: backend down") for _ in texts]
+
+
+def test_smoke_degraded_and_cli_exit_one(monkeypatch, tmp_path, capsys):
+    from nar_guardrails.cli import main
+    _register_broken()
+    cfg = {"broken": {"adapter": "always_error_test", "tracks": ["prompts", "skills"]}}
+    df = smoke(cfg, tmp_path, n=6, detectors=["broken"])
+    assert (df["status"] == "degraded").all() and (df["n_ok"] == 0).all()
+    assert df["reason"].iloc[0].startswith("boom")
+    monkeypatch.setattr("nar_guardrails.bench.smoke.load_models_cfg", lambda: cfg)
+    assert main(["smoke", "--results-dir", str(tmp_path / "r2"), "--detectors", "broken", "--n", "6"]) == 1

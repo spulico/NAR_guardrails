@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import tempfile
+from collections import Counter
 from datetime import datetime
 from pathlib import Path
 
@@ -23,30 +24,46 @@ def _subset(items: list[Item], n: int) -> list[Item]:
     return out
 
 
+def _error_reason(vs: list) -> str | None:
+    texts = [str(v.raw) for v in vs if v.outcome == "error"]
+    if not texts:
+        return None
+    return Counter(texts).most_common(1)[0][0][:80]
+
+
 def smoke(models_cfg: dict | None = None, results_dir: Path = Path("results"), n: int = 20,
           detectors: list[str] | None = None) -> pd.DataFrame:
+    """Run detectors on a small subset of each track. Uses its own cache and never updates results/LATEST."""
     models_cfg = models_cfg if models_cfg is not None else load_models_cfg()
     stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
     rows = []
     with tempfile.TemporaryDirectory() as tmp:
         data_dir = Path(tmp)
-        write_jsonl(data_dir / "prompts.jsonl", _subset(load_curated_prompts(), n))
-        write_jsonl(data_dir / "skills.jsonl", _subset(load_curated_skills(), n))
-        for track in ("prompts", "skills"):
-            keys = detectors or (resolve_detectors(["all"], models_cfg, track) + ["fake"])
+        subsets = {"prompts": _subset(load_curated_prompts(), n), "skills": _subset(load_curated_skills(), n)}
+        for track, subset in subsets.items():
+            write_jsonl(data_dir / f"{track}.jsonl", subset)
+            keys = resolve_detectors(detectors or ["all", "fake"], models_cfg, track)
             keys = [k for k in keys if track in models_cfg[k].get("tracks", [])]
+            run_id = f"smoke-{stamp}-{track}"
             run_dir = run(RunConfig(track=track, split="smoke", detectors=keys, allow_dirty=True, data_dir=data_dir,
-                                    results_dir=Path(results_dir), models_cfg=models_cfg, run_id=f"smoke-{stamp}-{track}"))
+                                    results_dir=Path(results_dir), models_cfg=models_cfg, run_id=run_id,
+                                    cache_dir=Path(results_dir) / run_id / "cache", update_latest=False))
             res = load_run(run_dir)
-            items = {i.id: i for i in _subset(load_curated_prompts() if track == "prompts" else load_curated_skills(), n)}
+            items = {i.id: i for i in subset}
+            n_items = res["manifest"].get("n_items", len(subset))
             for key in keys:
                 entry = res["manifest"]["detectors"].get(key, {})
                 vs = res["verdicts"].get(key, [])
                 ok = [v for v in vs if v.outcome in ("ok", "refused", "truncated") and v.p_malicious is not None]
                 mal = [v.p_malicious for v in ok if items[v.item_id].label == 1]
                 ben = [v.p_malicious for v in ok if items[v.item_id].label == 0]
-                rows.append({"track": track, "detector": key, "status": entry.get("status", "missing"), "n_ok": len(ok),
-                             "mean_p_malicious": (sum(mal) / len(mal)) if mal else None,
-                             "mean_p_benign": (sum(ben) / len(ben)) if ben else None,
-                             "p50_ms": latency_summary(vs)["p50_ms"], "reason": entry.get("reason")})
+                status, reason = entry.get("status", "missing"), entry.get("reason")
+                if status == "ok" and len(ok) < n_items:
+                    status, reason = "degraded", _error_reason(vs) or reason
+                mp = (sum(mal) / len(mal)) if mal else None
+                mb = (sum(ben) / len(ben)) if ben else None
+                rows.append({"track": track, "detector": key, "status": status, "n_ok": len(ok),
+                             "mean_p_malicious": mp, "mean_p_benign": mb,
+                             "separates": (mp > mb) if mp is not None and mb is not None else None,
+                             "p50_ms": latency_summary(vs)["p50_ms"], "reason": reason})
     return pd.DataFrame(rows)

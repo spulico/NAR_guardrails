@@ -11,7 +11,7 @@ hf auth login                   # needed for gated models/datasets (older CLI: h
 export ANTHROPIC_API_KEY=...    # needed for the claude-* detectors
 ```
 
-Without credentials the affected detectors are skipped (with a reason in the manifest), not failed.
+Without credentials the Claude detectors are skipped (a missing key is detected at construction); gated models are skipped with a reason in the manifest, not failed.
 
 Gated models (accept each gate on its Hugging Face page after logging in): `promptguard2-86m` and `promptguard2-22m` (Meta Llama Prompt Guard 2), `sentinel` (qualifire/prompt-injection-sentinel).
 Gated datasets: `prodnull`, `bells`, `pliny`, `mindgard`. `make data` fails in strict mode if their counts are out of range; use `nar data build ... --no-strict` to build without them.
@@ -54,7 +54,7 @@ Each run writes `results/<run-id>/`:
 - `verdicts_<detector>.jsonl` - one verdict per item (outcome, `p_malicious`, latency, tokens)
 - `thresholds.json`, `report.md`, `cost_latency.png`, `scenario_heatmap.png` - written by `nar report`
 
-Smoke runs go to `results/smoke-<timestamp>-<track>/`.
+Smoke runs go to `results/smoke-<timestamp>-<track>/`; `nar smoke` keeps its own cache there and does not update `results/LATEST`. It exits 1 if any detector is `failed` or `degraded` with no usable verdicts.
 `results/`, `data/raw/`, `data/processed/` and `models/` are gitignored; never commit them.
 
 ## Extending

@@ -31,6 +31,8 @@ class RunConfig:
     results_dir: Path = Path("results")
     models_cfg: dict | None = None
     seed: int = 0
+    cache_dir: Path | None = None
+    update_latest: bool = True
 
 
 def load_items(data_dir: Path, track: str, split: str, protocol: str | None = None, limit: int | None = None) -> list[Item]:
@@ -144,7 +146,7 @@ def run(cfg: RunConfig) -> Path:
         except Exception as e:  # optional backends, gated downloads, missing deps
             entry.update(status="skipped", reason=f"{type(e).__name__}: {e}")
         else:
-            cache = VerdictCache(cache_path(Path(cfg.results_dir) / "cache", key, policy.hash, cfg.track))
+            cache = VerdictCache(cache_path(cfg.cache_dir or Path(cfg.results_dir) / "cache", key, policy.hash, cfg.track))
             try:
                 _run_detector(key, det, items, cache, run_dir, cfg, models_cfg, entry)
             except Exception as e:  # one broken detector must not abort the run
@@ -156,5 +158,6 @@ def run(cfg: RunConfig) -> Path:
         _free_memory()
         save()
     save()
-    (Path(cfg.results_dir) / "LATEST").write_text(run_id + "\n", encoding="utf-8")
+    if cfg.update_latest:
+        (Path(cfg.results_dir) / "LATEST").write_text(run_id + "\n", encoding="utf-8")
     return run_dir
