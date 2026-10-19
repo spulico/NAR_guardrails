@@ -183,3 +183,35 @@ def test_mcptox_null_fields_and_non_dicts(tmp_path: Path):
     (tmp_path / "pure_tool.json").write_text(json.dumps(["junk"]))
     with pytest.raises(ValueError):
         load_mcptox(tmp_path)
+
+
+def test_ensure_repo_offline_reuse_and_never_deletes(tmp_path: Path):
+    remote = tmp_path / "remote"
+    remote.mkdir()
+    _g(remote, "init", "-q")
+    _commit(remote, "a.txt", "v1")
+    c2 = _commit(remote, "b.txt", "v2")
+    raw = tmp_path / "raw"
+    ensure_repo(raw, "r", str(remote), "v1")
+    p = ensure_repo(raw, "r", str(remote), "v2")
+    remote.rename(tmp_path / "moved")
+    p = ensure_repo(raw, "r", str(remote), "v2")
+    assert (p / ".nar_commit").read_text().strip() == c2
+    with pytest.raises(RuntimeError, match="v1"):
+        ensure_repo(raw, "r", str(remote), "v1")
+    assert (p / "b.txt").exists() and _g(p, "rev-parse", "HEAD") == c2
+
+
+def test_ensure_repo_rejects_bad_name(tmp_path: Path):
+    for bad in ("../x", "a/b", ".."):
+        with pytest.raises(ValueError):
+            ensure_repo(tmp_path, bad, "https://example.invalid/x", "main")
+
+
+def test_ensure_repo_failed_clone_keeps_old_dir(tmp_path: Path):
+    raw = tmp_path / "raw"
+    (raw / "r").mkdir(parents=True)
+    (raw / "r" / "keep.txt").write_text("x")
+    with pytest.raises(RuntimeError):
+        ensure_repo(raw, "r", str(tmp_path / "nonexistent"), "v1")
+    assert (raw / "r" / "keep.txt").exists()
