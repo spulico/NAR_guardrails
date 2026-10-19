@@ -38,6 +38,14 @@ def _category(row: dict) -> str:
         v = row.get(k)
         if v:
             return str(v)
+    for k in ("attack_categories", "attack_category_codes"):  # real parquet: list-valued columns
+        v = row.get(k)
+        if v is not None and not isinstance(v, str):
+            v = [str(x) for x in list(v) if x]
+            if v:
+                return v[0]
+        elif v:
+            return str(v)
     return "unknown"
 
 

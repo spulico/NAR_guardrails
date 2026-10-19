@@ -56,3 +56,10 @@ def test_benign_row_ignores_stray_category():
     rows = [dict(ROWS[1], benchmark_id="MSB-0050", attack_category="Credential Access")]
     [it] = load_malicious_skill_bench(rows, {"MSD": [], "SD": []})
     assert it.scenario == "benign"
+
+
+def test_category_from_real_list_valued_column():
+    rows = [{"benchmark_id": "MSB-0060", "label": "1", "skill_text": "x", "attack_categories": ["Execution / Code Delivery", "Other"],
+             "attack_category_codes": ["execution_code_delivery"]}]
+    [it] = load_malicious_skill_bench(rows, {"MSD": [], "SD": []})
+    assert it.scenario == "Execution / Code Delivery"
