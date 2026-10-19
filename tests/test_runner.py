@@ -199,3 +199,32 @@ def test_detector_whose_computed_verdicts_are_all_errors_is_failed(tmp_path):
     assert m["allerr"]["computed"] == 2 and "throughput" not in m["allerr"]
     assert [v.outcome for v in read_verdicts(out / "verdicts_allerr.jsonl")] == ["error", "error"]
     assert m["flaky"]["status"] == "ok"   # some usable verdicts: not failed
+
+
+def test_load_items_filters_by_variant_and_manifest_records_it(tmp_path):
+    d = tmp_path / "processed"
+    sp = {"splits": {"MSD": "test", "SD": "test"}}
+    write_jsonl(d / "skills.jsonl", [
+        Item(id="k:1", track="skills", text="skill one", label=1, split="test", meta=sp),
+        Item(id="k:1#scripts", track="skills", text="skill one\n--- scripts ---\ncurl x", label=1, split="test",
+             variant="text+scripts", meta=sp),
+        Item(id="k:2", track="skills", text="skill two", label=0, split="test", meta=sp)])
+    assert [i.id for i in load_items(d, "skills", "test", protocol="MSD")] == ["k:1", "k:2"]
+    assert [i.id for i in load_items(d, "skills", "test", protocol="MSD", variant="text+scripts")] == ["k:1#scripts"]
+    with pytest.raises(ValueError):
+        load_items(d, "skills", "test", variant="scripts")
+    out = run(_cfg(tmp_path, d, track="skills", protocol="MSD", variant="text+scripts", run_id="v1"))
+    m = json.loads((out / "manifest.json").read_text())
+    assert m["variant"] == "text+scripts" and m["n_items"] == 1
+    assert [v.item_id for v in read_verdicts(out / "verdicts_fake.jsonl")] == ["k:1#scripts"]
+    assert json.loads((run(_cfg(tmp_path, d, track="skills", protocol="MSD", run_id="v2")) / "manifest.json").read_text())["variant"] == "text"
+
+
+def test_cli_run_passes_variant(monkeypatch, tmp_path):
+    from nar_guardrails import cli
+    seen = []
+    monkeypatch.setattr("nar_guardrails.bench.runner.run", lambda cfg: seen.append(cfg) or tmp_path)
+    assert cli.main(["run", "--track", "skills", "--split", "test", "--variant", "text+scripts"]) == 0
+    assert cli.main(["run", "--track", "skills", "--split", "test"]) == 0
+    assert [c.variant for c in seen] == ["text+scripts", "text"]
+    assert cli.main(["run", "--track", "skills", "--split", "test", "--variant", "bogus"]) == 2

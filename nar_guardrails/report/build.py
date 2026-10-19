@@ -10,7 +10,7 @@ from nar_guardrails.bench.thresholds import thresholds_for_run, write_thresholds
 from nar_guardrails.detectors import load_models_cfg
 from nar_guardrails.report.charts import scatter_cost_latency, scenario_heatmap
 from nar_guardrails.report.tables import (default_label_table, headline, leaderboard, load_run, scenario_table,
-                                          seed_aggregate, source_table)
+                                          seed_aggregate, source_table, variant_table)
 from nar_guardrails.schema import read_items
 
 
@@ -20,8 +20,12 @@ def _resolve_run(results_dir: Path, run_id: str) -> Path:
     return Path(results_dir) / run_id
 
 
-def find_dev_run(results_dir: Path, track: str, policy_ref: str, exclude: str, protocol: str | None = None) -> Path | None:
-    best = None
+def _variant(manifest: dict) -> str:
+    return manifest.get("variant") or "text"  # runs from before --variant existed used text only
+
+
+def _manifests(results_dir: Path):
+    """Yield (timestamp, manifest, run_dir) for every complete run manifest under results_dir."""
     for m in Path(results_dir).glob("*/manifest.json"):
         try:
             d = json.loads(m.read_text(encoding="utf-8"))
@@ -32,17 +36,38 @@ def find_dev_run(results_dir: Path, track: str, policy_ref: str, exclude: str, p
         ts = (d.get("environment") or {}).get("timestamp") if isinstance(d.get("environment"), dict) else None
         if any(d.get(k) is None for k in ("run_id", "track", "policy", "split")) or ts is None:
             continue
+        yield ts, d, m.parent
+
+
+def find_dev_run(results_dir: Path, track: str, policy_ref: str, exclude: str, protocol: str | None = None) -> Path | None:
+    """Newest dev/val run of the text variant with the same track, policy and protocol."""
+    best = None
+    for ts, d, run_dir in _manifests(results_dir):
         if (d["run_id"] == exclude or d["track"] != track or d["policy"] != policy_ref
-                or d["split"] not in ("dev", "val") or d.get("protocol") != protocol):
+                or d["split"] not in ("dev", "val") or d.get("protocol") != protocol or _variant(d) != "text"):
             continue
         if best is None or ts > best[0]:
-            best = (ts, m.parent)
+            best = (ts, run_dir)
+    return best[1] if best else None
+
+
+def find_variant_run(results_dir: Path, manifest: dict) -> Path | None:
+    """Newest run of the other skill variant with the same track, split, protocol and policy."""
+    want = "text+scripts" if _variant(manifest) == "text" else "text"
+    same = ("track", "split", "policy", "protocol")
+    best = None
+    for ts, d, run_dir in _manifests(results_dir):
+        if d["run_id"] == manifest["run_id"] or _variant(d) != want or any(d.get(k) != manifest.get(k) for k in same):
+            continue
+        if best is None or ts > best[0]:
+            best = (ts, run_dir)
     return best[1] if best else None
 
 
 def _items_for(run: dict, data_dir: Path):
     m = run["manifest"]
-    items = read_items(Path(data_dir) / f"{m['track']}.jsonl")
+    variant = _variant(m)
+    items = [i for i in read_items(Path(data_dir) / f"{m['track']}.jsonl") if i.variant == variant]
     if m.get("protocol"):
         return [i for i in items if i.meta.get("splits", {}).get(m["protocol"]) == m["split"]]
     return [i for i in items if i.split == m["split"]]
@@ -102,6 +127,22 @@ def build_report(results_dir: Path, run_id: str = "latest", dev_run_id: str | No
     scatter_cost_latency(lb, run_dir / "cost_latency.png")
     scenario_heatmap(sc, run_dir / "scenario_heatmap.png")
 
+    variant_md: list[str] = []
+    if m["track"] == "skills":
+        variant_md = ["## text+scripts variant"]
+        other_dir = find_variant_run(results_dir, m)
+        if other_dir is None:
+            variant_md += ["no text+scripts run found", ""]
+        else:
+            other = load_run(other_dir)
+            runs = {_variant(m): (run_dir.name, items, verdicts),
+                    _variant(other["manifest"]): (other_dir.name, _items_for(other, data_dir), other["verdicts"])}
+            vt = variant_table(runs["text"][1], runs["text"][2], runs["text+scripts"][1], runs["text+scripts"][2], thresholds)
+            variant_md += [f"Recall on malicious skills that ship scripts, paired by base item id: `text` run "
+                           f"`{runs['text'][0]}` (SKILL.md only) vs `text+scripts` run `{runs['text+scripts'][0]}`, "
+                           "at each detector's F1 threshold. Only pairs with a usable verdict in both runs count.",
+                           _md(vt), ""]
+
     defaulted = [k for k, d in zip(lb["detector"], lb["thr_default"]) if d]
     if defaulted and dev_dir is not None:
         errs = {k: (thresholds.get(k) or {}).get("error") for k in defaulted}
@@ -113,6 +154,7 @@ def build_report(results_dir: Path, run_id: str = "latest", dev_run_id: str | No
                     "## Scenario breakdown (recall for malicious codes, FPR for benign codes)", _md(sc), "",
                     "## Per-source", _md(so), "",
                     "## Models' own default labels", _md(dl), "",
+                    *variant_md,
                     "## Charts", "![cost/latency](cost_latency.png)", "![scenarios](scenario_heatmap.png)", "",
                     *skipped_md]
     (run_dir / "report.md").write_text("\n".join(parts), encoding="utf-8")

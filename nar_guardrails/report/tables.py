@@ -164,6 +164,34 @@ def default_label_table(items, verdicts_by_det) -> pd.DataFrame:
     return pd.DataFrame(rows)
 
 
+SCRIPTS_SUFFIX = "#scripts"
+
+
+def variant_table(text_items: list[Item], text_verdicts: dict[str, list[Verdict]], script_items: list[Item],
+                  script_verdicts: dict[str, list[Verdict]], thresholds: dict) -> pd.DataFrame:
+    """Recall on malicious skills that exist in both variants, paired by base id (`<id>` vs `<id>#scripts`).
+
+    Only pairs with a usable verdict under both variants count; each detector uses its F1 threshold.
+    """
+    nan = float("nan")
+    scripted = {i.id.removesuffix(SCRIPTS_SUFFIX): i for i in script_items}
+    pairs = [(t, scripted[t.id]) for t in text_items if t.id in scripted and t.label == 1]
+    keys = list(text_verdicts) + [k for k in script_verdicts if k not in text_verdicts]
+    rows = []
+    for key in keys:
+        thr = _thr(thresholds, key, "f1")
+        _, s_text, ids_text = usable([t for t, _ in pairs], text_verdicts.get(key, []))
+        _, s_scr, ids_scr = usable([s for _, s in pairs], script_verdicts.get(key, []))
+        by_text = dict(zip(ids_text, s_text))
+        by_scr = {i.removesuffix(SCRIPTS_SUFFIX): sc for i, sc in zip(ids_scr, s_scr)}
+        common = [b for b in by_text if b in by_scr]
+        rec_text = sum(by_text[b] >= thr for b in common) / len(common) if common else nan
+        rec_scr = sum(by_scr[b] >= thr for b in common) / len(common) if common else nan
+        rows.append({"detector": key, "thr_f1": thr, "n_malicious_scripted": len(common),
+                     "recall_text": rec_text, "recall_text+scripts": rec_scr})
+    return pd.DataFrame(rows)
+
+
 def seed_aggregate(df: pd.DataFrame, cols: list[str]) -> pd.DataFrame:
     df = df.copy()
     df["base"] = [split_seed(k)[0] for k in df["detector"]]

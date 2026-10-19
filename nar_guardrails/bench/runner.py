@@ -34,12 +34,20 @@ class RunConfig:
     seed: int = 0
     cache_dir: Path | None = None
     update_latest: bool = True
+    variant: str = "text"
 
 
-def load_items(data_dir: Path, track: str, split: str, protocol: str | None = None, limit: int | None = None) -> list[Item]:
+VARIANTS = ("text", "text+scripts")
+
+
+def load_items(data_dir: Path, track: str, split: str, protocol: str | None = None, limit: int | None = None,
+               variant: str = "text") -> list[Item]:
+    """Items of one track/split (or protocol split) and one variant; variants are never mixed."""
     if limit is not None and limit <= 0:
         raise ValueError(f"limit must be a positive integer or None, got {limit}")
-    items = read_items(Path(data_dir) / f"{track}.jsonl")
+    if variant not in VARIANTS:
+        raise ValueError(f"variant must be one of {VARIANTS}, got {variant!r}")
+    items = [i for i in read_items(Path(data_dir) / f"{track}.jsonl") if i.variant == variant]
     if protocol:
         items = [i for i in items if i.meta.get("splits", {}).get(protocol) == split]
     else:
@@ -128,12 +136,12 @@ def run(cfg: RunConfig) -> Path:
         raise SystemExit("working tree is dirty; commit or pass --allow-dirty")
     models_cfg = cfg.models_cfg or load_models_cfg()
     keys = resolve_detectors(cfg.detectors, models_cfg, cfg.track)
-    items = load_items(cfg.data_dir, cfg.track, cfg.split, cfg.protocol, cfg.limit)
+    items = load_items(cfg.data_dir, cfg.track, cfg.split, cfg.protocol, cfg.limit, cfg.variant)
     policy = _policy_for(cfg, cfg.track)
     run_id = cfg.run_id or datetime.now().strftime("%Y%m%d-%H%M%S")
     run_dir = Path(cfg.results_dir) / run_id
     run_dir.mkdir(parents=True, exist_ok=True)
-    manifest = {"run_id": run_id, "track": cfg.track, "split": cfg.split, "protocol": cfg.protocol,
+    manifest = {"run_id": run_id, "track": cfg.track, "split": cfg.split, "protocol": cfg.protocol, "variant": cfg.variant,
                 "policy": policy.ref, "n_examples": len(policy.examples), "n_items": len(items), "limit": cfg.limit, "seed": cfg.seed,
                 "environment": env, "detectors": {}}
     manifest_path = run_dir / "manifest.json"

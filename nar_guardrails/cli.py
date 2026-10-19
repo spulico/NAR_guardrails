@@ -15,6 +15,8 @@ def build_parser() -> argparse.ArgumentParser:
     r.add_argument("--detectors", default="all", help="comma-separated keys or 'all'")
     r.add_argument("--policy", default="shared")
     r.add_argument("--protocol", default=None, help="skills only: MSD or SD")
+    r.add_argument("--variant", default="text", choices=["text", "text+scripts"],
+                   help="skills only: SKILL.md alone (text) or with bundled scripts (text+scripts)")
     r.add_argument("--limit", type=int, default=None)
     r.add_argument("--seed", type=int, default=0)
     r.add_argument("--run-id", default=None)
@@ -51,7 +53,8 @@ def main(argv: list[str] | None = None) -> int:
         from pathlib import Path
         from nar_guardrails.bench.runner import RunConfig, run
         out = run(RunConfig(track=args.track, split=args.split, detectors=args.detectors.split(","),
-                            policy=args.policy, protocol=args.protocol, limit=args.limit, run_id=args.run_id, seed=args.seed,
+                            policy=args.policy, protocol=args.protocol, variant=args.variant, limit=args.limit,
+                            run_id=args.run_id, seed=args.seed,
                             allow_dirty=args.allow_dirty, throughput=args.throughput,
                             data_dir=Path(args.data_dir), results_dir=Path(args.results_dir)))
         print(out)
