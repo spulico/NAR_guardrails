@@ -6,7 +6,7 @@ import re
 from concurrent.futures import ThreadPoolExecutor
 from time import perf_counter
 
-from nar_guardrails.detectors.base import Detector, Prediction, _sanitise, register
+from nar_guardrails.detectors.base import Detector, DetectorUnavailable, Prediction, _sanitise, register
 from nar_guardrails.detectors.policy import Policy
 from nar_guardrails.schema import Item, Verdict
 
@@ -57,7 +57,10 @@ class ClaudeDetector(Detector):
         super().__init__(cfg, policy)
         if client is None:
             import anthropic
-            client = anthropic.Anthropic()
+            client = anthropic.Anthropic(timeout=cfg.get("timeout_s", 60))
+            # the SDK only fails at request time without credentials; a profile/credentials provider also counts
+            if client.api_key is None and client.auth_token is None and getattr(client, "credentials", None) is None:
+                raise DetectorUnavailable("no Anthropic credentials (ANTHROPIC_API_KEY / ANTHROPIC_AUTH_TOKEN)")
         self.client = client
         self.model = cfg["model_id"]
         self.effort = cfg.get("effort", "low")

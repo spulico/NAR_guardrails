@@ -23,6 +23,12 @@ class BadWarmup(Detector):
         raise RuntimeError("boom")
 
 
+@register("all_error")
+class AllError(Detector):
+    def predict_texts(self, texts):
+        return [Prediction(None, None, "error", None, "401 invalid key") for _ in texts]
+
+
 @register("flaky")
 class Flaky(Detector):
     def predict_texts(self, texts):
@@ -45,7 +51,7 @@ class Counting(Detector):
 @pytest.fixture(scope="module", autouse=True)
 def _cleanup_registry():
     yield
-    for k in ("always_down", "bad_warmup", "flaky", "counting"):
+    for k in ("always_down", "bad_warmup", "all_error", "flaky", "counting"):
         REGISTRY.pop(k, None)
 
 
@@ -53,6 +59,7 @@ MODELS = {"fake": {"adapter": "fake", "tracks": ["prompts", "skills"]},
           "down": {"adapter": "always_down", "optional": True, "tracks": ["prompts"]},
           "bad": {"adapter": "bad_warmup", "tracks": ["prompts"]},
           "flaky": {"adapter": "flaky", "tracks": ["prompts"]},
+          "allerr": {"adapter": "all_error", "tracks": ["prompts"]},
           "counting": {"adapter": "counting", "tracks": ["prompts"]},
           "laya": {"adapter": "laya", "tracks": ["skills"]}}
 
@@ -83,10 +90,10 @@ def test_load_items_by_split_protocol_and_limit(tmp_path):
 
 
 def test_resolve_detectors_all_excludes_fake_and_respects_tracks():
-    assert resolve_detectors(["all"], MODELS, "prompts") == ["down", "bad", "flaky", "counting"]
+    assert resolve_detectors(["all"], MODELS, "prompts") == ["down", "bad", "flaky", "allerr", "counting"]
     assert resolve_detectors(["all"], MODELS, "skills") == ["laya"]
     assert resolve_detectors(["fake", "down"], MODELS, "prompts") == ["fake", "down"]
-    assert resolve_detectors([" fake ", "all", "down"], MODELS, "prompts") == ["fake", "down", "bad", "flaky", "counting"]
+    assert resolve_detectors([" fake ", "all", "down"], MODELS, "prompts") == ["fake", "down", "bad", "flaky", "allerr", "counting"]
     with pytest.raises(KeyError):
         resolve_detectors(["nope"], MODELS, "prompts")
 
@@ -182,3 +189,13 @@ def test_throughput_warms_up_even_when_everything_is_cached(tmp_path):
     out = run(_cfg(tmp_path, d, detectors=["counting"], run_id="t2", throughput=True))
     assert WARM_LOG[0] == "warmup" and "predict" in WARM_LOG
     assert "throughput" in json.loads((out / "manifest.json").read_text())["detectors"]["counting"]
+
+
+def test_detector_whose_computed_verdicts_are_all_errors_is_failed(tmp_path):
+    d = _data(tmp_path)
+    out = run(_cfg(tmp_path, d, detectors=["allerr", "flaky"], run_id="ae", throughput=True))
+    m = json.loads((out / "manifest.json").read_text())["detectors"]
+    assert m["allerr"]["status"] == "failed" and m["allerr"]["reason"] == "all verdicts are errors: 401 invalid key"
+    assert m["allerr"]["computed"] == 2 and "throughput" not in m["allerr"]
+    assert [v.outcome for v in read_verdicts(out / "verdicts_allerr.jsonl")] == ["error", "error"]
+    assert m["flaky"]["status"] == "ok"   # some usable verdicts: not failed

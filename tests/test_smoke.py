@@ -44,12 +44,12 @@ def _register_broken():
             return [Prediction(None, None, "error", None, "boom: backend down") for _ in texts]
 
 
-def test_smoke_degraded_and_cli_exit_one(monkeypatch, tmp_path, capsys):
+def test_smoke_all_error_detector_is_failed_and_cli_exits_one(monkeypatch, tmp_path, capsys):
     from nar_guardrails.cli import main
     _register_broken()
     cfg = {"broken": {"adapter": "always_error_test", "tracks": ["prompts", "skills"]}}
     df = smoke(cfg, tmp_path, n=6, detectors=["broken"])
-    assert (df["status"] == "degraded").all() and (df["n_ok"] == 0).all()
-    assert df["reason"].iloc[0].startswith("boom")
+    assert (df["status"] == "failed").all() and (df["n_ok"] == 0).all()
+    assert df["reason"].iloc[0] == "all verdicts are errors: boom: backend down"
     monkeypatch.setattr("nar_guardrails.bench.smoke.load_models_cfg", lambda: cfg)
     assert main(["smoke", "--results-dir", str(tmp_path / "r2"), "--detectors", "broken", "--n", "6"]) == 1

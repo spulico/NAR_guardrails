@@ -2,12 +2,8 @@ from __future__ import annotations
 
 import requests
 
-from nar_guardrails.detectors.base import Detector, Prediction, register
+from nar_guardrails.detectors.base import Detector, DetectorUnavailable, Prediction, register
 from nar_guardrails.detectors.laya_adapter import noul_probability
-
-
-class DetectorUnavailable(RuntimeError):
-    """Raised when an optional detector's backend is not reachable."""
 
 
 @register("openjev")

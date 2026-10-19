@@ -10,6 +10,10 @@ from nar_guardrails.detectors.policy import Policy
 from nar_guardrails.schema import Item, Verdict
 
 
+class DetectorUnavailable(RuntimeError):
+    """Raised at construction when a detector's backend or credentials are not available."""
+
+
 @dataclass
 class Prediction:
     p_malicious: float | None

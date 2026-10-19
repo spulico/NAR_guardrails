@@ -118,3 +118,50 @@ def test_long_example_is_truncated_in_system_prompt():
     pol = Policy("prompts", "shared", "q", "m", "b", examples=(("x" * 900, 1),))
     s = build_system_prompt(pol)
     assert "x" * 800 + " ..." in s and "x" * 801 not in s
+
+
+class _FakeSDK:
+    """Stands in for anthropic.Anthropic: records the timeout, exposes the resolved credentials."""
+    creds = {"api_key": None, "auth_token": None, "credentials": None}
+
+    def __init__(self, timeout=None):
+        self.timeout = timeout
+        self.api_key = self.creds["api_key"]
+        self.auth_token = self.creds["auth_token"]
+        self.credentials = self.creds["credentials"]
+        self.messages = FakeMessages([])
+
+
+CFG = {"model_id": "claude-haiku-5-5", "effort": "low", "max_tokens": 256, "concurrency": 2}
+
+
+def test_missing_credentials_raise_detector_unavailable(monkeypatch):
+    from nar_guardrails.detectors.base import DetectorUnavailable
+    monkeypatch.setattr("anthropic.Anthropic", _FakeSDK)
+    monkeypatch.setattr(_FakeSDK, "creds", {"api_key": None, "auth_token": None, "credentials": None})
+    with pytest.raises(DetectorUnavailable, match="no Anthropic credentials"):
+        ClaudeDetector(CFG, POL)
+
+
+@pytest.mark.parametrize("creds", [{"api_key": "sk-test", "auth_token": None, "credentials": None},
+                                   {"api_key": None, "auth_token": "tok", "credentials": None},
+                                   {"api_key": None, "auth_token": None, "credentials": object()}])
+def test_sdk_client_gets_timeout_when_credentials_resolve(monkeypatch, creds):
+    monkeypatch.setattr("anthropic.Anthropic", _FakeSDK)
+    monkeypatch.setattr(_FakeSDK, "creds", creds)
+    assert ClaudeDetector(CFG, POL).client.timeout == 60
+    assert ClaudeDetector({**CFG, "timeout_s": 12}, POL).client.timeout == 12
+
+
+def test_keyless_claude_is_skipped_by_the_runner(monkeypatch, tmp_path):
+    from nar_guardrails.bench.runner import RunConfig, run
+    from nar_guardrails.schema import write_jsonl
+    monkeypatch.setattr("anthropic.Anthropic", _FakeSDK)
+    monkeypatch.setattr(_FakeSDK, "creds", {"api_key": None, "auth_token": None, "credentials": None})
+    write_jsonl(tmp_path / "d" / "prompts.jsonl", [Item(id="i1", track="prompts", text="a", label=0, split="test")])
+    models = {"claude-haiku-5-5": {"adapter": "claude", **CFG, "tracks": ["prompts"]}}
+    out = run(RunConfig(track="prompts", split="test", detectors=["claude-haiku-5-5"], allow_dirty=True,
+                        data_dir=tmp_path / "d", results_dir=tmp_path / "r", models_cfg=models, run_id="k"))
+    entry = json.loads((out / "manifest.json").read_text())["detectors"]["claude-haiku-5-5"]
+    assert entry["status"] == "skipped" and "no Anthropic credentials" in entry["reason"]
+    assert not (out / "verdicts_claude-haiku-5-5.jsonl").exists()
