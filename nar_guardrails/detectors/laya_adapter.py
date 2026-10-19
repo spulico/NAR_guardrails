@@ -42,5 +42,6 @@ class LayaDetector(Detector):
         out = []
         for r in results:
             p = noul_probability(r["answers"]["malicious"])
-            out.append(Prediction(p, int(p >= 0.5), "ok", r.get("usage"), r["answers"]))
+            outcome = "truncated" if (r.get("usage") or {}).get("truncated") else "ok"  # input cut at max_len
+            out.append(Prediction(p, int(p >= 0.5), outcome, r.get("usage"), r["answers"]))
         return out
