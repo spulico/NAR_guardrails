@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import gc
 import json
 from dataclasses import dataclass, replace
 from datetime import datetime
@@ -11,6 +12,8 @@ from nar_guardrails.bench.manifest import collect_environment
 from nar_guardrails.detectors import build_detector, load_models_cfg
 from nar_guardrails.detectors.policy import load_policy, pick_examples
 from nar_guardrails.schema import Item, read_items, write_jsonl
+
+CACHE_CHUNK = 64
 
 
 @dataclass
@@ -31,22 +34,29 @@ class RunConfig:
 
 
 def load_items(data_dir: Path, track: str, split: str, protocol: str | None = None, limit: int | None = None) -> list[Item]:
+    if limit is not None and limit <= 0:
+        raise ValueError(f"limit must be a positive integer or None, got {limit}")
     items = read_items(Path(data_dir) / f"{track}.jsonl")
     if protocol:
         items = [i for i in items if i.meta.get("splits", {}).get(protocol) == split]
     else:
         items = [i for i in items if i.split == split]
     items.sort(key=lambda i: i.id)
-    return items[:limit] if limit else items
+    return items if limit is None else items[:limit]
 
 
 def resolve_detectors(spec: list[str], models_cfg: dict, track: str) -> list[str]:
-    if spec == ["all"]:
-        return [k for k, c in models_cfg.items() if k != "fake" and track in c.get("tracks", [])]
-    for k in spec:
-        if k not in models_cfg:
+    keys = [k.strip() for k in spec if k.strip()]
+    out: list[str] = []
+    for k in keys:
+        if k == "all":
+            names = [n for n, c in models_cfg.items() if n != "fake" and track in c.get("tracks", [])]
+        elif k in models_cfg:
+            names = [k]
+        else:
             raise KeyError(f"unknown detector {k!r}")
-    return list(spec)
+        out.extend(n for n in names if n not in out)
+    return out
 
 
 def measure_throughput(det, items: list[Item], batch_size: int, n: int = 256) -> dict:
@@ -62,9 +72,47 @@ def _policy_for(cfg: RunConfig, track: str):
     if cfg.policy == "8shot":
         pool_split = "train" if track == "skills" else "dev"
         pool = load_items(cfg.data_dir, track, pool_split, protocol=cfg.protocol)
-        pol = load_policy(track, "shared", examples=pick_examples(pool, 8, cfg.seed))
+        examples = pick_examples(pool, 8, cfg.seed)
+        if len(examples) < 8:
+            raise ValueError(f"8shot needs 8 examples but track={track!r} split={pool_split!r} "
+                             f"pool has {len(pool)} items ({len(examples)} usable)")
+        pol = load_policy(track, "shared", examples=examples)
         return replace(pol, name="8shot")
     return load_policy(track, cfg.policy)
+
+
+def _free_memory() -> None:
+    gc.collect()
+    try:
+        import torch
+        if torch.backends.mps.is_available():
+            torch.mps.empty_cache()
+    except Exception:
+        pass
+
+
+def _run_detector(key, det, items, cache, run_dir, cfg, models_cfg, entry) -> None:
+    todo = [i for i in items if cache.get(i) is None]
+    fresh: dict[str, object] = {}
+    warmed = False
+    if todo:
+        det.warmup()
+        warmed = True
+        for start in range(0, len(todo), CACHE_CHUNK):
+            chunk = todo[start:start + CACHE_CHUNK]
+            verdicts = det.predict(chunk, batch_size=1)
+            fresh.update((i.id, v) for i, v in zip(chunk, verdicts))
+            good = [(i, v) for i, v in zip(chunk, verdicts) if v.outcome != "error"]
+            if good:
+                cache.put_many([i for i, _ in good], [v for _, v in good])
+    out = [cache.get(i) or fresh[i.id] for i in items]
+    write_jsonl(run_dir / f"verdicts_{key}.jsonl", out)
+    entry.update(status="ok", computed=len(todo), cached=len(items) - len(todo),
+                 errors=sum(v.outcome == "error" for v in out))
+    if cfg.throughput and models_cfg[key].get("adapter") != "claude":
+        if not warmed:
+            det.warmup()
+        entry["throughput"] = measure_throughput(det, items, int(models_cfg[key].get("batch_size", 16)))
 
 
 def run(cfg: RunConfig) -> Path:
@@ -79,30 +127,34 @@ def run(cfg: RunConfig) -> Path:
     run_dir = Path(cfg.results_dir) / run_id
     run_dir.mkdir(parents=True, exist_ok=True)
     manifest = {"run_id": run_id, "track": cfg.track, "split": cfg.split, "protocol": cfg.protocol,
-                "policy": policy.ref, "n_items": len(items), "limit": cfg.limit, "seed": cfg.seed,
+                "policy": policy.ref, "n_examples": len(policy.examples), "n_items": len(items), "limit": cfg.limit, "seed": cfg.seed,
                 "environment": env, "detectors": {}}
+    manifest_path = run_dir / "manifest.json"
+
+    def save() -> None:
+        manifest_path.write_text(json.dumps(manifest, indent=2, default=str), encoding="utf-8")
+
     for key in keys:
         entry: dict = {"model_id": models_cfg[key].get("model_id")}
         t0 = perf_counter()
+        manifest["detectors"][key] = entry
+        det = None
         try:
             det = build_detector(key, policy, models_cfg)
         except Exception as e:  # optional backends, gated downloads, missing deps
             entry.update(status="skipped", reason=f"{type(e).__name__}: {e}")
-            manifest["detectors"][key] = entry
-            continue
-        cache = VerdictCache(cache_path(Path(cfg.results_dir) / "cache", key, policy.hash, cfg.track))
-        todo = [i for i in items if cache.get(i) is None]
-        if todo:
-            det.warmup()
-            cache.put_many(todo, det.predict(todo, batch_size=1))
-        verdicts = [cache.get(i) for i in items]
-        write_jsonl(run_dir / f"verdicts_{key}.jsonl", verdicts)
-        entry.update(status="ok", computed=len(todo), cached=len(items) - len(todo),
-                     seconds=perf_counter() - t0)
-        if cfg.throughput and models_cfg[key].get("adapter") != "claude":
-            entry["throughput"] = measure_throughput(det, items, int(models_cfg[key].get("batch_size", 16)))
-        manifest["detectors"][key] = entry
+        else:
+            cache = VerdictCache(cache_path(Path(cfg.results_dir) / "cache", key, policy.hash, cfg.track))
+            try:
+                _run_detector(key, det, items, cache, run_dir, cfg, models_cfg, entry)
+            except Exception as e:  # one broken detector must not abort the run
+                for k in ("computed", "cached", "errors", "throughput"):
+                    entry.pop(k, None)
+                entry.update(status="failed", reason=f"{type(e).__name__}: {e}")
+            entry["seconds"] = perf_counter() - t0
         del det  # free the model before loading the next one
-    (run_dir / "manifest.json").write_text(json.dumps(manifest, indent=2, default=str), encoding="utf-8")
+        _free_memory()
+        save()
+    save()
     (Path(cfg.results_dir) / "LATEST").write_text(run_id + "\n", encoding="utf-8")
     return run_dir
