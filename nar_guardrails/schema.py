@@ -61,7 +61,7 @@ def write_jsonl(path: str | Path, rows: Iterable[Item | Verdict]) -> int:
     n = 0
     with path.open("w", encoding="utf-8") as f:
         for r in rows:
-            f.write(json.dumps(asdict(r), ensure_ascii=False) + "\n")
+            f.write(json.dumps(asdict(r), ensure_ascii=False, default=str) + "\n")
             n += 1
     return n
 

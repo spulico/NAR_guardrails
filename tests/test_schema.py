@@ -28,3 +28,14 @@ def test_label_must_be_0_or_1():
     import pytest
     with pytest.raises(ValueError):
         Item(id="x", track="prompts", text="t", label=2)
+
+
+def test_write_jsonl_serialises_non_json_raw_as_text(tmp_path: Path):
+    class Opaque:
+        def __str__(self):
+            return "opaque-object"
+
+    v = Verdict(item_id="a:1", detector="d", policy="p", p_malicious=0.4, label=0, raw={"obj": Opaque(), "tags": {"x"}})
+    assert write_jsonl(tmp_path / "v.jsonl", [v]) == 1
+    [back] = read_verdicts(tmp_path / "v.jsonl")
+    assert back.raw == {"obj": "opaque-object", "tags": "{'x'}"} and back.p_malicious == 0.4
