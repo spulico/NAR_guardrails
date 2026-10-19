@@ -43,17 +43,15 @@ class HFClassifier(Detector):
         return [self.tok.decode(c) for c in chunks]
 
     def predict_texts(self, texts: list[str]) -> list[Prediction]:
-        out: list[Prediction] = []
-        for text in texts:
-            text = text if text.strip() else "(empty)"
-            if self.window:
+        texts = [t if t.strip() else "(empty)" for t in texts]
+        if self.window:  # windows of one text form one forward batch
+            out: list[Prediction] = []
+            for text in texts:
                 windows = self._windows(text)
-                scores = self._scores(windows)
-                p = max(scores)
+                p = max(self._scores(windows))
                 out.append(Prediction(p, int(p >= 0.5), "ok", None, {"windows": len(windows)}))
-            else:
-                n_tokens = len(self.tok.encode(text, add_special_tokens=False)) + 2
-                p = self._scores([text])[0]
-                outcome = "truncated" if n_tokens > self.max_length else "ok"
-                out.append(Prediction(p, int(p >= 0.5), outcome, None, {"n_tokens": n_tokens}))
-        return out
+            return out
+        n_tokens = [len(self.tok.encode(t, add_special_tokens=False)) + 2 for t in texts]
+        scores = self._scores(texts) if texts else []  # one padded forward pass for the whole batch
+        return [Prediction(p, int(p >= 0.5), "truncated" if n > self.max_length else "ok", None, {"n_tokens": n})
+                for p, n in zip(scores, n_tokens)]

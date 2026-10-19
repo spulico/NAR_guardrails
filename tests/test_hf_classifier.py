@@ -43,6 +43,14 @@ def test_truncation_flag_set_when_over_max_length():
     assert long.p_malicious is not None and long.label in (0, 1)
 
 
+def test_non_window_batch_is_scored_in_one_call_and_keeps_truncation_flags():
+    d = Stub({"max_length": 4, "window": False})
+    preds = d.predict_texts(["a b", "", " ".join(["w"] * 10)])
+    assert d.calls == [["a b", "(empty)", " ".join(["w"] * 10)]]
+    assert [p.outcome for p in preds] == ["ok", "ok", "truncated"]
+    assert [p.raw["n_tokens"] for p in preds] == [4, 3, 12]
+
+
 def test_label_is_threshold_half():
     d = Stub({"max_length": 100})
     [lo, hi] = d.predict_texts(["a b c", " ".join(["w"] * 8)])

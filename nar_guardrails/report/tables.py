@@ -70,8 +70,15 @@ def _kind(models_cfg: dict, key: str) -> str:
     return "remote" if models_cfg.get(base, models_cfg.get(key, {})).get("adapter") == "claude" else "local"
 
 
+def _throughput(manifest: dict | None, key: str) -> tuple[float | None, float | None]:
+    """(items per second, seconds per 1,000 items) from the run manifest's --throughput measurement."""
+    det = ((manifest or {}).get("detectors") or {}).get(key) or {}
+    ips = (det.get("throughput") or {}).get("items_per_s")
+    return (float(ips), 1000.0 / float(ips)) if ips else (None, None)
+
+
 def leaderboard(items: list[Item], verdicts_by_det: dict[str, list[Verdict]], thresholds: dict, prices: dict,
-                models_cfg: dict, n_boot: int = 1000, seed: int = 0) -> pd.DataFrame:
+                models_cfg: dict, n_boot: int = 1000, seed: int = 0, manifest: dict | None = None) -> pd.DataFrame:
     nan = float("nan")
     rows = []
     for key, all_vs in verdicts_by_det.items():
@@ -91,6 +98,7 @@ def leaderboard(items: list[Item], verdicts_by_det: dict[str, list[Verdict]], th
         lat = latency_summary(vs)
         base, _ = split_seed(key)
         cost = summarize_cost(vs, prices.get(models_cfg.get(base, {}).get("model_id")))
+        items_per_s, s_per_1k = _throughput(manifest, key)
         rows.append({"detector": key, "kind": _kind(models_cfg, key), "n": len(y), "thr_f1": thr, "thr_default": thr_default,
                      "recall": m.get("recall"), "recall_lo": rec_ci[0], "recall_hi": rec_ci[1],
                      "fpr": m.get("fpr"), "fpr_lo": fpr_ci[0], "fpr_hi": fpr_ci[1],
@@ -98,7 +106,8 @@ def leaderboard(items: list[Item], verdicts_by_det: dict[str, list[Verdict]], th
                      **op,
                      "fpr_at_95_oracle": fpr_at_recall(y, s, 0.95)[0] if y else None,
                      "fpr_at_99_oracle": fpr_at_recall(y, s, 0.99)[0] if y else None,
-                     "p50_ms": lat["p50_ms"], "p95_ms": lat["p95_ms"], "per_1k_usd": cost["per_1k_usd"],
+                     "p50_ms": lat["p50_ms"], "p95_ms": lat["p95_ms"], "items_per_s": items_per_s, "s_per_1k": s_per_1k,
+                     "per_1k_usd": cost["per_1k_usd"],
                      "refused": sum(v.outcome == "refused" for v in vs), "errors": sum(v.outcome == "error" for v in vs),
                      "truncated": sum(v.outcome == "truncated" for v in vs)})
     return pd.DataFrame(rows)

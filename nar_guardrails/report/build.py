@@ -114,7 +114,7 @@ def build_report(results_dir: Path, run_id: str = "latest", dev_run_id: str | No
         (run_dir / "report.md").write_text("\n".join(parts), encoding="utf-8")
         return run_dir
 
-    lb = leaderboard(items, verdicts, thresholds, prices, models_cfg)
+    lb = leaderboard(items, verdicts, thresholds, prices, models_cfg, manifest=m)
     sc = scenario_table(items, verdicts, thresholds)
     so = source_table(items, verdicts, thresholds)
     hl = headline(items, verdicts, thresholds, prices, models_cfg)

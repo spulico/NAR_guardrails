@@ -84,3 +84,14 @@ def test_bootstrap_deterministic_and_null_threshold():
     thr = {"fake": {"f1": None, "recall95": None}, "claude-haiku-5-5": THR["claude-haiku-5-5"]}
     df = leaderboard(ITEMS, V, thr, PRICES, MODELS, n_boot=0).set_index("detector")
     assert df.loc["fake", "thr_f1"] == 0.5 and bool(df.loc["fake", "thr_default"]) and df["fpr_at_r95"].isna()["fake"]
+
+
+def test_leaderboard_throughput_columns_come_from_the_manifest():
+    manifest = {"detectors": {"fake": {"status": "ok", "throughput": {"n": 256, "batch_size": 16, "seconds": 5.12,
+                                                                     "items_per_s": 50.0}},
+                              "claude-haiku-5-5": {"status": "ok"}}}
+    df = leaderboard(ITEMS, V, THR, PRICES, MODELS, n_boot=0, manifest=manifest).set_index("detector")
+    assert df.loc["fake", "items_per_s"] == pytest.approx(50.0) and df.loc["fake", "s_per_1k"] == pytest.approx(20.0)
+    assert df.loc["claude-haiku-5-5", ["items_per_s", "s_per_1k"]].isna().all()
+    plain = leaderboard(ITEMS, V, THR, PRICES, MODELS, n_boot=0).set_index("detector")
+    assert plain[["items_per_s", "s_per_1k"]].isna().all().all()
