@@ -48,9 +48,9 @@ def scatter_cost_latency(lb: pd.DataFrame, out_png: Path) -> Path:
     sizes = 50 + 400 * (cost / max(cost.max(), 1e-9))
     colors = np.where(df["kind"] == "remote", REMOTE, LOCAL)
     ax.scatter(df["p50_ms"], df["fpr_at_r95"], s=sizes, c=colors, alpha=0.85, edgecolor=SURFACE, linewidth=2, zorder=3)
-    for _, r in df.iterrows():
-        ax.annotate(r["detector"], (r["p50_ms"], r["fpr_at_r95"]), textcoords="offset points", xytext=(7, 6),
-                    fontsize=8, color=INK2)
+    for n, (_, r) in enumerate(df.iterrows()):
+        ax.annotate(r["detector"], (r["p50_ms"], r["fpr_at_r95"]), textcoords="offset points",
+                    xytext=(7, 6) if n % 2 == 0 else (7, -12), fontsize=7, color=INK2)
     ax.set_xscale("log")
     ax.set_ylim(-0.02, max(0.1, float(df["fpr_at_r95"].max()) * 1.15))
     ax.set_xlabel("p50 latency per item (ms, log scale)", color=INK2)

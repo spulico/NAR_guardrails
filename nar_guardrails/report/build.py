@@ -20,13 +20,21 @@ def _resolve_run(results_dir: Path, run_id: str) -> Path:
     return Path(results_dir) / run_id
 
 
-def find_dev_run(results_dir: Path, track: str, policy_ref: str, exclude: str) -> Path | None:
+def find_dev_run(results_dir: Path, track: str, policy_ref: str, exclude: str, protocol: str | None = None) -> Path | None:
     best = None
     for m in Path(results_dir).glob("*/manifest.json"):
-        d = json.loads(m.read_text(encoding="utf-8"))
-        if d["run_id"] == exclude or d["track"] != track or d["policy"] != policy_ref or d["split"] not in ("dev", "val"):
+        try:
+            d = json.loads(m.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
             continue
-        ts = d["environment"]["timestamp"]
+        if not isinstance(d, dict):
+            continue
+        ts = (d.get("environment") or {}).get("timestamp") if isinstance(d.get("environment"), dict) else None
+        if any(d.get(k) is None for k in ("run_id", "track", "policy", "split")) or ts is None:
+            continue
+        if (d["run_id"] == exclude or d["track"] != track or d["policy"] != policy_ref
+                or d["split"] not in ("dev", "val") or d.get("protocol") != protocol):
+            continue
         if best is None or ts > best[0]:
             best = (ts, m.parent)
     return best[1] if best else None
@@ -43,7 +51,7 @@ def _items_for(run: dict, data_dir: Path):
 def _md(df: pd.DataFrame, floatfmt: str = ".3f") -> str:
     if df.empty:
         return "_(no data)_"
-    return df.to_markdown(index=not isinstance(df.index, pd.RangeIndex), floatfmt=floatfmt)
+    return df.to_markdown(index=not isinstance(df.index, pd.RangeIndex), floatfmt=floatfmt, missingval="–")
 
 
 def build_report(results_dir: Path, run_id: str = "latest", dev_run_id: str | None = None,
@@ -56,14 +64,15 @@ def build_report(results_dir: Path, run_id: str = "latest", dev_run_id: str | No
     items = _items_for(run, data_dir)
     m = run["manifest"]
     verdicts = {k: v for k, v in run["verdicts"].items() if v}
-    dev_dir = (Path(results_dir) / dev_run_id) if dev_run_id else find_dev_run(results_dir, m["track"], m["policy"], m["run_id"])
+    dev_dir = (Path(results_dir) / dev_run_id) if dev_run_id else find_dev_run(results_dir, m["track"], m["policy"], m["run_id"], m.get("protocol"))
     notes = []
     thresholds: dict = {}
     if dev_dir is not None:
         dev = load_run(dev_dir)
         dev_items = _items_for(dev, data_dir)
         thresholds = thresholds_for_run(dev_items, dev["verdicts"], m["policy"], m["track"])
-        notes.append(f"Thresholds chosen on dev run `{dev_dir.name}` ({len(dev_items)} items).")
+        proto = f", protocol {m['protocol']}" if m.get("protocol") else ""
+        notes.append(f"Thresholds chosen on dev run `{dev_dir.name}`{proto} ({len(dev_items)} items).")
     else:
         notes.append("No dev run found for this track and policy: thresholds default to 0.5 for every detector.")
     write_thresholds(run_dir / "thresholds.json", thresholds)
@@ -100,7 +109,7 @@ def build_report(results_dir: Path, run_id: str = "latest", dev_run_id: str | No
                  *[f"- `{k}`" + (f": {e}" if e else "") for k, e in errs.items()], ""]
     parts = head + ["## Headline (dev-chosen threshold at 95% recall)", _md(hl), "",
                     "## Leaderboard (threshold = best F1 on dev; 95% bootstrap CIs)", _md(lb), "",
-                    "## Seed-aggregated (fine-tuned models)", _md(agg), "",
+                    "## Seed-aggregated (mean ± std over -seedN runs; single-run detectors shown as is)", _md(agg), "",
                     "## Scenario breakdown (recall for malicious codes, FPR for benign codes)", _md(sc), "",
                     "## Per-source", _md(so), "",
                     "## Models' own default labels", _md(dl), "",
