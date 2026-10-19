@@ -67,11 +67,12 @@ def fpr_at_recall(y: list[int], scores: list[float], target: float) -> tuple[flo
 
 
 def precision_at_prevalence(recall: float, fpr: float, prevalence: float) -> float:
+    """Precision at a given malicious prevalence from recall and FPR; NaN when nothing would be flagged."""
     if math.isnan(recall) or math.isnan(fpr):
         return float("nan")
     tp = recall * prevalence
     fp = fpr * (1.0 - prevalence)
-    return tp / (tp + fp) if (tp + fp) > 0 else 0.0
+    return tp / (tp + fp) if (tp + fp) > 0 else float("nan")
 
 
 def bootstrap_ci(y: list[int], scores: list[float], stat: Callable[[list[int], list[float]], float],

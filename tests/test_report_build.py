@@ -195,3 +195,13 @@ def test_report_warns_when_items_file_changed_since_the_runs(tmp_path: Path):
         f.write(json.dumps({"id": "x:new", "track": "prompts", "text": "new", "label": 0, "split": "test"}) + "\n")
     md = (build_report(res, "test1", "dev1", data_dir=d, models_cfg=MODELS) / "report.md").read_text()
     assert "changed after run `test1`" in md and "changed after run `dev1`" in md
+
+
+def test_skills_report_explains_precision_at_prevalence(tmp_path: Path):
+    d = _skills_data(tmp_path)
+    res = tmp_path / "results"
+    _run(res, d, "sk", "test", track="skills", protocol="MSD", models=SKILL_MODELS)
+    md = (build_report(res, "sk", data_dir=d, models_cfg=SKILL_MODELS) / "report.md").read_text()
+    assert "precision_at_10pct" in md and "if 10% or 1% of skills were malicious" in md
+    _run(res, _data(tmp_path), "pr", "test")
+    assert "if 10% or 1% of skills" not in (build_report(res, "pr", data_dir=_data(tmp_path), models_cfg=MODELS) / "report.md").read_text()

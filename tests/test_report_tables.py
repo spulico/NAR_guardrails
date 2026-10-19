@@ -95,3 +95,13 @@ def test_leaderboard_throughput_columns_come_from_the_manifest():
     assert df.loc["claude-haiku-5-5", ["items_per_s", "s_per_1k"]].isna().all()
     plain = leaderboard(ITEMS, V, THR, PRICES, MODELS, n_boot=0).set_index("detector")
     assert plain[["items_per_s", "s_per_1k"]].isna().all().all()
+
+
+def test_leaderboard_precision_at_prevalence_columns():
+    df = leaderboard(ITEMS, V, THR, PRICES, MODELS, n_boot=0).set_index("detector")
+    f = df.loc["fake"]   # recall 0.75, FPR 0.25 at the F1 threshold 0.6
+    assert f["precision_at_10pct"] == pytest.approx(0.075 / (0.075 + 0.225))
+    assert f["precision_at_1pct"] == pytest.approx(0.0075 / (0.0075 + 0.2475))
+    silent = {"fake": [Verdict(f"i{k}", "fake", "p", 0.01, 0) for k in range(8)]}
+    s = leaderboard(ITEMS, silent, {"fake": {"f1": 0.5}}, PRICES, MODELS, n_boot=0).iloc[0]
+    assert s["recall"] == 0.0 and s["fpr"] == 0.0 and s[["precision_at_10pct", "precision_at_1pct"]].isna().all()

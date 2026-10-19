@@ -72,3 +72,9 @@ def test_fpr_at_recall_rejects_out_of_range_target():
 def test_tied_negative_at_threshold_counts_as_false_positive():
     m = basic_metrics([1, 0], [0.6, 0.6], 0.6)
     assert m["fpr"] == pytest.approx(1.0) and m["recall"] == pytest.approx(1.0)
+
+
+def test_precision_at_prevalence_is_nan_when_nothing_is_flagged():
+    assert math.isnan(precision_at_prevalence(0.0, 0.0, 0.1))
+    assert precision_at_prevalence(0.0, 0.2, 0.1) == 0.0   # flags only benign items: precision 0, not undefined
+    assert precision_at_prevalence(0.5, 0.0, 0.01) == pytest.approx(1.0)

@@ -10,7 +10,8 @@ import pandas as pd
 
 from nar_guardrails.bench.cost import summarize_cost
 from nar_guardrails.bench.latency import latency_summary
-from nar_guardrails.bench.metrics import USABLE_OUTCOMES, auroc, basic_metrics, bootstrap_ci, fpr_at_recall, usable
+from nar_guardrails.bench.metrics import (USABLE_OUTCOMES, auroc, basic_metrics, bootstrap_ci, fpr_at_recall,
+                                          precision_at_prevalence, usable)
 from nar_guardrails.schema import Item, Verdict, read_verdicts
 
 _SEED = re.compile(r"^(.*)-seed(\d+)$")
@@ -102,7 +103,10 @@ def leaderboard(items: list[Item], verdicts_by_det: dict[str, list[Verdict]], th
         rows.append({"detector": key, "kind": _kind(models_cfg, key), "n": len(y), "thr_f1": thr, "thr_default": thr_default,
                      "recall": m.get("recall"), "recall_lo": rec_ci[0], "recall_hi": rec_ci[1],
                      "fpr": m.get("fpr"), "fpr_lo": fpr_ci[0], "fpr_hi": fpr_ci[1],
-                     "precision": m.get("precision"), "f1": m.get("f1"), "auroc": auroc(y, s) if y else None,
+                     "precision": m.get("precision"), "f1": m.get("f1"),
+                     "precision_at_10pct": precision_at_prevalence(m["recall"], m["fpr"], 0.10) if y else nan,
+                     "precision_at_1pct": precision_at_prevalence(m["recall"], m["fpr"], 0.01) if y else nan,
+                     "auroc": auroc(y, s) if y else None,
                      **op,
                      "fpr_at_95_oracle": fpr_at_recall(y, s, 0.95)[0] if y else None,
                      "fpr_at_99_oracle": fpr_at_recall(y, s, 0.99)[0] if y else None,

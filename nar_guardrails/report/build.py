@@ -157,8 +157,15 @@ def build_report(results_dir: Path, run_id: str = "latest", dev_run_id: str | No
         errs = {k: (thresholds.get(k) or {}).get("error") for k in defaulted}
         head += ["## Thresholds defaulted to 0.5",
                  *[f"- `{k}`" + (f": {e}" if e else "") for k, e in errs.items()], ""]
+    prevalence_md = []
+    if m["track"] == "skills":
+        share = sum(i.label for i in items) / len(items) if items else float("nan")
+        prevalence_md = [f"Skill track: {share:.0%} of these items are malicious, far more than in a real skill registry, "
+                         "so raw precision flatters every detector. `precision_at_10pct` and `precision_at_1pct` give the "
+                         "precision each detector would have at the F1 threshold if 10% or 1% of skills were malicious: "
+                         "recall·p / (recall·p + FPR·(1 − p)). They are empty when nothing would be flagged.", ""]
     parts = head + ["## Headline (dev-chosen threshold at 95% recall)", _md(hl), "",
-                    "## Leaderboard (threshold = best F1 on dev; 95% bootstrap CIs)", _md(lb), "",
+                    "## Leaderboard (threshold = best F1 on dev; 95% bootstrap CIs)", _md(lb), "", *prevalence_md,
                     "## Seed-aggregated (mean ± std over -seedN runs; single-run detectors shown as is)", _md(agg), "",
                     "## Scenario breakdown (recall for malicious codes, FPR for benign codes)", _md(sc), "",
                     "## Per-source", _md(so), "",
