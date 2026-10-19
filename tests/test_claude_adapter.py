@@ -59,7 +59,7 @@ def test_refusal_is_recorded_as_flagged():
     d, _ = _det([_resp(None, stop_reason="refusal", category="cyber")])
     [v] = d.predict([Item(id="i1", track="prompts", text="x", label=1)])
     assert v.outcome == "refused" and v.p_malicious == 1.0 and v.label == 1
-    assert v.raw["category"] == "cyber" and v.usage["input_tokens"] == 120
+    assert v.raw == {"stop_reason": "refusal", "category": "cyber"} and v.usage["input_tokens"] == 120
 
 
 def test_malformed_json_and_bad_probability_become_errors():
@@ -165,3 +165,20 @@ def test_keyless_claude_is_skipped_by_the_runner(monkeypatch, tmp_path):
     entry = json.loads((out / "manifest.json").read_text())["detectors"]["claude-haiku-5-5"]
     assert entry["status"] == "skipped" and "no Anthropic credentials" in entry["reason"]
     assert not (out / "verdicts_claude-haiku-5-5.jsonl").exists()
+
+
+def test_max_tokens_stop_is_an_error_with_stop_reason_and_text():
+    partial = '{"verdict": "malicious", "probab'
+    whole = json.dumps({"verdict": "benign", "probability": 0.1, "reason": ""})
+    d, _ = _det([_resp(partial, stop_reason="max_tokens"), _resp(whole, stop_reason="max_tokens")])
+    vs = d.predict([Item(id="i1", track="prompts", text="a", label=1), Item(id="i2", track="prompts", text="b", label=0)])
+    assert [v.outcome for v in vs] == ["error", "error"]
+    assert all(v.p_malicious is None and v.label is None and v.usage["output_tokens"] == 15 for v in vs)
+    assert vs[0].raw == {"stop_reason": "max_tokens", "text": partial}
+    assert vs[1].raw == {"stop_reason": "max_tokens", "text": whole}
+
+
+def test_parse_errors_record_stop_reason_in_raw():
+    d, _ = _det([_resp("not json")])
+    [v] = d.predict([Item(id="i1", track="prompts", text="a", label=0)])
+    assert v.outcome == "error" and v.raw == {"stop_reason": "end_turn", "text": "not json"}

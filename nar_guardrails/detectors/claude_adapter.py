@@ -80,18 +80,22 @@ class ClaudeDetector(Detector):
             messages=[{"role": "user", "content": wrap_input(text if text.strip() else "(empty)")}],
         )
         usage = {"input_tokens": int(resp.usage.input_tokens), "output_tokens": int(resp.usage.output_tokens)}
-        if resp.stop_reason == "refusal":
+        stop = resp.stop_reason
+        if stop == "refusal":
             cat = getattr(resp.stop_details, "category", None) if resp.stop_details else None
-            return Prediction(1.0, 1, "refused", usage, {"category": cat})
+            return Prediction(1.0, 1, "refused", usage, {"stop_reason": stop, "category": cat})
         text_out = next((b.text for b in resp.content if getattr(b, "type", "") == "text"), "")
+        failed = {"stop_reason": stop, "text": text_out}
+        if stop == "max_tokens":  # cut-off output: never trust a verdict parsed from it
+            return Prediction(None, None, "error", usage, failed)
         try:
             data = json.loads(text_out)
             prob = float(data["probability"])
             verdict = str(data["verdict"]).lower()
         except (ValueError, TypeError, KeyError, json.JSONDecodeError):
-            return Prediction(None, None, "error", usage, text_out)
+            return Prediction(None, None, "error", usage, failed)
         if not math.isfinite(prob) or verdict not in ("malicious", "benign"):
-            return Prediction(None, None, "error", usage, text_out)
+            return Prediction(None, None, "error", usage, failed)
         label = 1 if verdict == "malicious" else 0
         return Prediction(min(1.0, max(0.0, prob)), label, "ok", usage, data)
 
