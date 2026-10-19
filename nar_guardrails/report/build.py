@@ -185,7 +185,8 @@ def build_report(results_dir: Path, run_id: str = "latest", dev_run_id: str | No
         variant_md = ["## text+scripts variant"]
         other_dir = find_variant_run(results_dir, m)
         if other_dir is None:
-            variant_md += ["no text+scripts run found", ""]
+            missing = "text+scripts" if _variant(m) == "text" else "text"
+            variant_md += [f"no {missing} run found to pair with this {_variant(m)} run", ""]
         else:
             other = load_run(other_dir)
             runs = {_variant(m): (run_dir.name, items, verdicts),

@@ -42,11 +42,11 @@ Test runs are reported with `--dev-run <dev-or-val-run>`: thresholds are chosen 
 
 Reusing a run id: `nar run --run-id X` on an existing `results/X/` first deletes every `verdicts_*.jsonl` in it, so the directory never mixes verdicts from an earlier run (the manifest is rewritten; `nar report` rewrites the report files).
 
-Skill items come in two variants and a run uses exactly one: `--variant text` (default, SKILL.md only) or `--variant text+scripts` (SKILL.md plus bundled scripts; only the curated skills and SkillSpector fixtures have it). The variant is recorded in the run manifest. A skill-track report adds a `text+scripts variant` section when a run of the other variant exists for the same track, split, protocol and policy: per detector, recall on the malicious skills that ship scripts, paired by item id (`<id>` vs `<id>#scripts`), at the F1 threshold. Otherwise the section says "no text+scripts run found".
+Skill items come in two variants and a run uses exactly one: `--variant text` (default, SKILL.md only) or `--variant text+scripts` (SKILL.md plus bundled scripts; only the curated skills and SkillSpector fixtures have it). The variant is recorded in the run manifest. A skill-track report adds a `text+scripts variant` section when a run of the other variant exists for the same track, split, protocol and policy: per detector, recall on the malicious skills that ship scripts, paired by item id (`<id>` vs `<id>#scripts`), at the F1 threshold. Otherwise the section names the missing variant, e.g. "no text+scripts run found to pair with this text run".
 
 ### make bench
 
-`make bench` runs `nar smoke` first (it stops there if a detector fails), then `make data`, then twelve `nar run` calls with fixed run ids, and ends with one report per track, protocol and policy:
+`make bench` runs `nar smoke` first (it stops there if a detector fails), then `make data`, then ten `nar run` calls with fixed run ids, and ends with one report per track, protocol and policy:
 
 | Report | Test run | Thresholds from |
 |---|---|---|
@@ -63,7 +63,7 @@ Rough cost from `configs/prices.yaml`, assuming about 4 characters per token and
 
 Each run writes `results/<run-id>/`:
 
-- `manifest.json` - config (track, split, protocol, variant, policy), git sha, start and finish time, `items_sha256` of the processed items file, and per detector its status, reason, Hub `revision` and counts. Statuses are `ok`, `skipped` (could not be constructed: missing credentials, gated model, server down) and `failed` (raised while running, or every verdict it computed was an error; its verdict file is still written)
+- `manifest.json` - config (track, split, protocol, variant, policy), git sha, start and finish time, `items_sha256` of the processed items file, and per detector its status, reason, Hub `revision` and counts. Statuses are `ok`, `skipped` (could not be constructed: missing credentials, gated model, server down) and `failed` (raised while running, or it computed verdicts and every verdict of the run, cached ones included, is an error; its verdict file is still written)
 - `verdicts_<detector>.jsonl` - one verdict per item (outcome, `p_malicious`, latency, tokens)
 - `thresholds.json`, `report.md`, `leaderboard.csv`, `cost_latency.png`, `scenario_heatmap.png` - written by `nar report`
 

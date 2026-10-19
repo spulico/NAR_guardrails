@@ -126,8 +126,8 @@ def _run_detector(key, det, items, cache, run_dir, cfg, models_cfg, entry) -> No
     write_jsonl(run_dir / f"verdicts_{key}.jsonl", out)
     entry.update(status="ok", computed=len(todo), cached=len(items) - len(todo),
                  errors=sum(v.outcome == "error" for v in out))
-    if fresh and all(v.outcome == "error" for v in fresh.values()):
-        top = Counter(str(v.raw) for v in fresh.values()).most_common(1)[0][0]
+    if fresh and all(v.outcome == "error" for v in out):  # no usable verdict at all, cached ones included
+        top = Counter(str(v.raw) for v in out).most_common(1)[0][0]
         entry.update(status="failed", reason=f"all verdicts are errors: {top}")
         return
     if cfg.throughput and models_cfg[key].get("adapter") != "claude":

@@ -159,7 +159,7 @@ def test_report_pairs_text_and_text_plus_scripts_runs(tmp_path: Path):
     run(RunConfig(**base, run_id="t_text"))
     out = build_report(res, "t_text", data_dir=d, models_cfg=SKILL_MODELS)
     md = (out / "report.md").read_text()
-    assert "## text+scripts variant\nno text+scripts run found" in md
+    assert "## text+scripts variant\nno text+scripts run found to pair with this text run" in md
     assert "9 items, device" in md   # the text run reports text items only
 
     run(RunConfig(**base, run_id="t_scripts", variant="text+scripts"))
@@ -181,7 +181,9 @@ def test_report_ignores_other_protocol_for_variant_pairing(tmp_path: Path):
     run(RunConfig(**base, protocol="MSD", run_id="a"))
     run(RunConfig(**base, protocol="SD", run_id="b", variant="text+scripts"))
     md = (build_report(res, "a", data_dir=d, models_cfg=SKILL_MODELS) / "report.md").read_text()
-    assert "no text+scripts run found" in md
+    assert "no text+scripts run found to pair with this text run" in md
+    md = (build_report(res, "b", data_dir=d, models_cfg=SKILL_MODELS) / "report.md").read_text()
+    assert "no text run found to pair with this text+scripts run" in md
 
 
 def test_report_warns_when_items_file_changed_since_the_runs(tmp_path: Path):

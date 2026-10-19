@@ -294,3 +294,16 @@ def test_manifest_records_model_revision_and_items_hash(tmp_path):
     assert m["detectors"]["pinned"]["revision"] == "0123abcd" and m["detectors"]["fake"]["revision"] is None
     assert "revision" not in m["detectors"]["down"]   # never constructed
     assert m["items_sha256"] == hashlib.sha256((d / "prompts.jsonl").read_bytes()).hexdigest()
+
+
+def test_resumed_run_with_one_recomputed_error_stays_ok(tmp_path):
+    d = tmp_path / "processed"
+    items = [Item(id=f"r:{n}", track="prompts", text=f"ok {n}", label=n % 2, scenario="B1", source="s", split="test")
+             for n in range(10)]
+    write_jsonl(d / "prompts.jsonl", items)
+    run(_cfg(tmp_path, d, detectors=["flaky"], run_id="r1"))   # caches 10 ok verdicts
+    items[3].text = "BAD now"   # text changed: cache miss, recomputed, errors
+    write_jsonl(d / "prompts.jsonl", items)
+    m = json.loads((run(_cfg(tmp_path, d, detectors=["flaky"], run_id="r2")) / "manifest.json").read_text())
+    e = m["detectors"]["flaky"]
+    assert (e["computed"], e["cached"], e["errors"], e["status"]) == (1, 9, 1, "ok") and "reason" not in e
