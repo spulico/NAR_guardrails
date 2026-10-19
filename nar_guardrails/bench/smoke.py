@@ -37,13 +37,19 @@ def smoke(models_cfg: dict | None = None, results_dir: Path = Path("results"), n
     models_cfg = models_cfg if models_cfg is not None else load_models_cfg()
     stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
     rows = []
+    requested = [d.strip() for d in (detectors or ["all", "fake"]) if d.strip()]
+    if not requested:
+        raise ValueError("empty detector spec: name detector keys or 'all'")
     with tempfile.TemporaryDirectory() as tmp:
         data_dir = Path(tmp)
         subsets = {"prompts": _subset(load_curated_prompts(), n), "skills": _subset(load_curated_skills(), n)}
         for track, subset in subsets.items():
             write_jsonl(data_dir / f"{track}.jsonl", subset)
-            keys = resolve_detectors(detectors or ["all", "fake"], models_cfg, track)
-            keys = [k for k in keys if track in models_cfg[k].get("tracks", [])]
+            # a named detector that does not list this track sits this track out (unknown names still raise)
+            spec = [d for d in requested if d == "all" or d not in models_cfg or track in models_cfg[d].get("tracks", [])]
+            if not spec:
+                continue
+            keys = resolve_detectors(spec, models_cfg, track)
             run_id = f"smoke-{stamp}-{track}"
             run_dir = run(RunConfig(track=track, split="smoke", detectors=keys, allow_dirty=True, data_dir=data_dir,
                                     results_dir=Path(results_dir), models_cfg=models_cfg, run_id=run_id,

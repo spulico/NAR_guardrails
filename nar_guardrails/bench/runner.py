@@ -57,12 +57,18 @@ def load_items(data_dir: Path, track: str, split: str, protocol: str | None = No
 
 
 def resolve_detectors(spec: list[str], models_cfg: dict, track: str) -> list[str]:
+    """Expand 'all' to every non-fake detector listing `track`; an explicitly named detector must list it."""
     keys = [k.strip() for k in spec if k.strip()]
+    if not keys:
+        raise ValueError("empty detector spec: name detector keys or 'all'")
     out: list[str] = []
     for k in keys:
         if k == "all":
             names = [n for n, c in models_cfg.items() if n != "fake" and track in c.get("tracks", [])]
         elif k in models_cfg:
+            tracks = models_cfg[k].get("tracks", [])
+            if track not in tracks:
+                raise KeyError(f"detector {k!r} does not run on track {track!r} (its tracks: {tracks})")
             names = [k]
         else:
             raise KeyError(f"unknown detector {k!r}")
@@ -130,10 +136,19 @@ def _run_detector(key, det, items, cache, run_dir, cfg, models_cfg, entry) -> No
         entry["throughput"] = measure_throughput(det, items, int(models_cfg[key].get("batch_size", 16)))
 
 
+def _seed_torch(seed: int) -> None:
+    try:
+        import torch
+    except ImportError:
+        return
+    torch.manual_seed(seed)
+
+
 def run(cfg: RunConfig) -> Path:
     env = collect_environment()
     if env["git_dirty"] and not cfg.allow_dirty:
         raise SystemExit("working tree is dirty; commit or pass --allow-dirty")
+    _seed_torch(cfg.seed)
     models_cfg = cfg.models_cfg or load_models_cfg()
     keys = resolve_detectors(cfg.detectors, models_cfg, cfg.track)
     items = load_items(cfg.data_dir, cfg.track, cfg.split, cfg.protocol, cfg.limit, cfg.variant)
@@ -161,8 +176,8 @@ def run(cfg: RunConfig) -> Path:
         except Exception as e:  # optional backends, gated downloads, missing deps
             entry.update(status="skipped", reason=f"{type(e).__name__}: {e}")
         else:
-            cache = VerdictCache(cache_path(cfg.cache_dir or Path(cfg.results_dir) / "cache", key, policy.hash, cfg.track))
-            try:
+            try:  # a corrupt cache file fails this detector only
+                cache = VerdictCache(cache_path(cfg.cache_dir or Path(cfg.results_dir) / "cache", key, policy.hash, cfg.track))
                 _run_detector(key, det, items, cache, run_dir, cfg, models_cfg, entry)
             except Exception as e:  # one broken detector must not abort the run
                 for k in ("computed", "cached", "errors", "throughput"):

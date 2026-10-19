@@ -53,3 +53,14 @@ def test_smoke_all_error_detector_is_failed_and_cli_exits_one(monkeypatch, tmp_p
     assert df["reason"].iloc[0] == "all verdicts are errors: boom: backend down"
     monkeypatch.setattr("nar_guardrails.bench.smoke.load_models_cfg", lambda: cfg)
     assert main(["smoke", "--results-dir", str(tmp_path / "r2"), "--detectors", "broken", "--n", "6"]) == 1
+
+
+def test_smoke_named_detector_runs_only_on_its_tracks(tmp_path: Path):
+    import pytest
+    cfg = {"fake": {"adapter": "fake", "tracks": ["prompts", "skills"]}, "ponly": {"adapter": "fake", "tracks": ["prompts"]}}
+    df = smoke(cfg, tmp_path, n=4, detectors=["ponly"])
+    assert list(zip(df["track"], df["detector"])) == [("prompts", "ponly")]
+    with pytest.raises(KeyError):
+        smoke(cfg, tmp_path, n=4, detectors=["nope"])
+    with pytest.raises(ValueError):
+        smoke(cfg, tmp_path, n=4, detectors=[" "])

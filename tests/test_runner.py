@@ -238,3 +238,40 @@ def test_reused_run_id_drops_verdict_files_from_the_previous_run(tmp_path):
     out2 = run(_cfg(tmp_path, d, detectors=["fake", "down"], run_id="same"))
     assert out2 == out and {f.name for f in out.glob("verdicts_*.jsonl")} == {"verdicts_fake.jsonl"}
     assert set(json.loads((out / "manifest.json").read_text())["detectors"]) == {"fake", "down"}
+
+
+def test_empty_detector_spec_raises(tmp_path):
+    with pytest.raises(ValueError, match="empty detector spec"):
+        resolve_detectors([], MODELS, "prompts")
+    with pytest.raises(ValueError):
+        resolve_detectors([" ", ""], MODELS, "prompts")
+    with pytest.raises(ValueError):
+        run(_cfg(tmp_path, _data(tmp_path), detectors=[""]))
+
+
+def test_named_detector_must_list_the_track():
+    with pytest.raises(KeyError, match="does not run on track 'prompts'"):
+        resolve_detectors(["laya"], MODELS, "prompts")
+    with pytest.raises(KeyError):
+        resolve_detectors(["fake", "bad"], MODELS, "skills")
+    assert resolve_detectors(["all"], MODELS, "skills") == ["laya"]   # 'all' still filters silently
+
+
+def test_corrupt_cache_fails_only_that_detector(tmp_path):
+    d = _data(tmp_path)
+    out = run(_cfg(tmp_path, d, run_id="c1"))
+    policy_hash = json.loads((out / "manifest.json").read_text())["policy"].split("@")[1]
+    path = cache_path(tmp_path / "results" / "cache", "fake", policy_hash, "prompts")
+    path.write_text("not json\n" + path.read_text())   # a malformed line that is not the torn tail
+    out = run(_cfg(tmp_path, d, detectors=["fake", "flaky"], run_id="c2"))
+    m = json.loads((out / "manifest.json").read_text())["detectors"]
+    assert m["fake"]["status"] == "failed" and "malformed cache line" in m["fake"]["reason"]
+    assert m["flaky"]["status"] == "ok"
+
+
+def test_run_seeds_torch(monkeypatch, tmp_path):
+    import torch
+    seen = []
+    monkeypatch.setattr(torch, "manual_seed", lambda s: seen.append(s))
+    run(_cfg(tmp_path, _data(tmp_path), seed=7, run_id="seeded"))
+    assert seen == [7]
