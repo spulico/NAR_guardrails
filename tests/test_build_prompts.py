@@ -102,3 +102,27 @@ def test_build_records_dedupe_accounting_and_label_conflicts(tmp_path: Path, mon
     assert m["dropped_duplicates"] == {"two": 1}
     assert m["label_conflicts"] == [{"kept": "one:1", "dropped": "two:1"}]
     assert m["strict"] is False and m["stream_limits"] == {}
+
+
+def test_build_manifest_records_git_commit_and_hf_dataset(tmp_path: Path, monkeypatch):
+    def fake_repo(raw_dir, name, url, ref):
+        repo = Path(raw_dir) / name
+        repo.mkdir(parents=True, exist_ok=True)
+        (repo / ".nar_commit").write_text("c0ffee\n")
+        return repo
+
+    base = {"published": "2026-01", "license": "MIT", "gated": False}
+    sources = {"g": {**base, "kind": "git", "url": "https://example.invalid/g", "ref": "v1",
+                     "loader": lambda repo: _items("g", 2, 1)},
+               "h": {**base, "kind": "hf", "dataset": "org/h", "config": "core", "split": "test", "streaming": False,
+                     "cap": None, "loader": lambda rows, cap, seed: _items("h", 2, 0)},
+               "gone": {**base, "kind": "hf", "dataset": "org/gone", "config": None, "split": "train", "streaming": False,
+                        "cap": None, "loader": lambda rows, cap, seed: (_ for _ in ()).throw(PermissionError("gated"))}}
+    monkeypatch.setattr("nar_guardrails.datasets.build_prompts.ensure_repo", fake_repo)
+    monkeypatch.setattr("nar_guardrails.datasets.build_prompts.hf_rows", lambda *a, **k: iter([{}]))
+    monkeypatch.setattr("nar_guardrails.datasets.build_prompts.load_curated_prompts", lambda: [])
+    m = build_prompts(tmp_path / "raw", tmp_path / "p.jsonl", sources=sources, strict=False)
+    assert m["sources"] == {"g": {"kind": "git", "url": "https://example.invalid/g", "ref": "v1", "commit": "c0ffee"},
+                            "h": {"kind": "hf", "dataset": "org/h", "config": "core", "split": "test"}}
+    assert "gone" in m["skipped"]
+    assert json.loads((tmp_path / "p.build.json").read_text())["sources"] == m["sources"]

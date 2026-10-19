@@ -29,6 +29,14 @@ class AllError(Detector):
         return [Prediction(None, None, "error", None, "401 invalid key") for _ in texts]
 
 
+@register("pinned")
+class Pinned(Detector):
+    revision = "0123abcd"
+
+    def predict_texts(self, texts):
+        return [Prediction(0.2, 0, "ok") for _ in texts]
+
+
 @register("flaky")
 class Flaky(Detector):
     def predict_texts(self, texts):
@@ -51,7 +59,7 @@ class Counting(Detector):
 @pytest.fixture(scope="module", autouse=True)
 def _cleanup_registry():
     yield
-    for k in ("always_down", "bad_warmup", "all_error", "flaky", "counting"):
+    for k in ("always_down", "bad_warmup", "all_error", "pinned", "flaky", "counting"):
         REGISTRY.pop(k, None)
 
 
@@ -275,3 +283,14 @@ def test_run_seeds_torch(monkeypatch, tmp_path):
     monkeypatch.setattr(torch, "manual_seed", lambda s: seen.append(s))
     run(_cfg(tmp_path, _data(tmp_path), seed=7, run_id="seeded"))
     assert seen == [7]
+
+
+def test_manifest_records_model_revision_and_items_hash(tmp_path):
+    import hashlib
+    d = _data(tmp_path)
+    models = {**MODELS, "pinned": {"adapter": "pinned", "tracks": ["prompts"]}}
+    out = run(_cfg(tmp_path, d, detectors=["pinned", "fake", "down"], models_cfg=models, run_id="prov"))
+    m = json.loads((out / "manifest.json").read_text())
+    assert m["detectors"]["pinned"]["revision"] == "0123abcd" and m["detectors"]["fake"]["revision"] is None
+    assert "revision" not in m["detectors"]["down"]   # never constructed
+    assert m["items_sha256"] == hashlib.sha256((d / "prompts.jsonl").read_bytes()).hexdigest()

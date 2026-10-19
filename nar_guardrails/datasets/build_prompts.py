@@ -40,6 +40,20 @@ def _load_source(name: str, spec: dict, raw_dir: Path, seed: int) -> list[Item]:
             close()
 
 
+def git_commit(repo: Path) -> str | None:
+    """The commit recorded by ensure_repo in <repo>/.nar_commit, or None."""
+    try:
+        return (Path(repo) / ".nar_commit").read_text(encoding="utf-8").strip() or None
+    except OSError:
+        return None
+
+
+def source_provenance(name: str, spec: dict, raw_dir: Path) -> dict:
+    if spec["kind"] == "git":
+        return {"kind": "git", "url": spec.get("url"), "ref": spec.get("ref"), "commit": git_commit(Path(raw_dir) / name)}
+    return {"kind": "hf", "dataset": spec.get("dataset"), "config": spec.get("config"), "split": spec.get("split", "train")}
+
+
 def _dedupe(items: list[Item]) -> tuple[list[Item], dict, list[dict]]:
     seen: dict[str, Item] = {}
     out, dropped, conflicts = [], {}, []
@@ -61,7 +75,7 @@ def build_prompts(raw_dir: Path, out_path: Path, seed: int = 0, sources: dict | 
     ranges = expected_ranges().get("prompts", {})
     items: list[Item] = list(load_curated_prompts())
     loaded_counts, skipped, licenses = {"curated": len(items)}, {}, {"curated": "CC-BY-4.0"}
-    stream_limits = {}
+    stream_limits, provenance = {}, {}
     for name, spec in sources.items():
         try:
             loaded = _load_source(name, spec, Path(raw_dir), seed)
@@ -70,6 +84,7 @@ def build_prompts(raw_dir: Path, out_path: Path, seed: int = 0, sources: dict | 
             continue
         loaded_counts[name] = len(loaded)
         licenses[name] = spec.get("license")
+        provenance[name] = source_provenance(name, spec, Path(raw_dir))
         if spec.get("streaming"):
             stream_limits[name] = spec.get("stream_limit", STREAM_LIMIT)
         items.extend(loaded)
@@ -81,6 +96,7 @@ def build_prompts(raw_dir: Path, out_path: Path, seed: int = 0, sources: dict | 
                 for n, c in kept.items() if n in ranges and not (ranges[n]["min"] <= c <= ranges[n]["max"])]
     manifest = {"seed": seed, "strict": strict, "stream_limits": stream_limits, "loaded": loaded_counts, "counts": kept,
                 "dropped_duplicates": dropped, "label_conflicts": conflicts, "skipped": skipped, "licenses": licenses,
+                "sources": provenance,
                 "duplicates_dropped": sum(dropped.values()), "range_problems": problems, "n_items": len(items)}
     if strict and problems:
         raise SystemExit("count validation failed:\n" + "\n".join(problems))

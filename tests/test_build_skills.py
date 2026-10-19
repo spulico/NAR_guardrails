@@ -45,3 +45,13 @@ def test_build_skills_fails_on_overlap(tmp_path: Path, monkeypatch):
     monkeypatch.setattr("nar_guardrails.datasets.build_skills.load_skillspector_fixtures", lambda repo, labels=None: [])
     with pytest.raises(ValueError):
         build_skills(tmp_path / "raw", tmp_path / "s.jsonl", strict=False, rows=rows, split_tables=splits, fixtures_repo=_fixtures(tmp_path))
+
+
+def test_build_skills_manifest_records_sources(tmp_path: Path, monkeypatch):
+    monkeypatch.setattr("nar_guardrails.datasets.build_skills.load_skillspector_fixtures", lambda repo, labels=None: [])
+    repo = _fixtures(tmp_path)
+    (repo / ".nar_commit").write_text("5ee5ee\n")
+    m = build_skills(tmp_path / "raw", tmp_path / "s.jsonl", strict=False, rows=ROWS, split_tables=SPLITS, fixtures_repo=repo)
+    assert m["sources"]["malicious_skill_bench"] == {"kind": "hf", "dataset": "ProtectSkills/MaliciousSkillBench",
+                                                     "config": "primary", "split": "train"}
+    assert m["sources"]["skillspector_fixtures"]["commit"] == "5ee5ee"

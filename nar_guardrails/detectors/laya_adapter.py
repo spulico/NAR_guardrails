@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from nar_guardrails.detectors.base import Detector, Prediction, register
+from nar_guardrails.detectors.base import Detector, Prediction, hf_revision, register
 from nar_guardrails.detectors.policy import Policy
 from nar_guardrails.device import pick_device
 
@@ -31,6 +31,7 @@ class LayaDetector(Detector):
             # laya.load has no max_len kwarg; Agent reads it from its cfg dict
             self.agent.cfg["max_len"] = int(cfg["max_length"])
         self.questions = self.build_questions(policy)
+        self.revision = hf_revision(cfg["model_id"], cfg.get("revision"))
 
     def predict_texts(self, texts: list[str]) -> list[Prediction]:
         states = [t if t.strip() else "(empty)" for t in texts]

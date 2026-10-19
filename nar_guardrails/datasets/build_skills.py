@@ -4,7 +4,7 @@ import json
 from collections import Counter
 from pathlib import Path
 
-from nar_guardrails.datasets.build_prompts import expected_ranges
+from nar_guardrails.datasets.build_prompts import expected_ranges, git_commit
 from nar_guardrails.datasets.curated import assert_no_overlap, load_curated_skills, load_skillspector_fixtures
 from nar_guardrails.datasets.fetch import ensure_repo, hf_rows
 from nar_guardrails.datasets.skills_bench import REPO_ID, fetch_split_tables, load_malicious_skill_bench
@@ -32,7 +32,10 @@ def build_skills(raw_dir: Path, out_path: Path, seed: int = 0, strict: bool = Tr
                 for n, c in counts.items() if n in ranges and not (ranges[n]["min"] <= c <= ranges[n]["max"])]
     manifest = {"seed": seed, "counts": counts, "protocol_counts": protocol_counts, "range_problems": problems,
                 "n_items": len(items), "licenses": {"malicious_skill_bench": "CC-BY-4.0 (metadata); upstream terms per skill",
-                                                   "skillspector_fixtures": "Apache-2.0", "curated_skills": "CC-BY-4.0"}}
+                                                   "skillspector_fixtures": "Apache-2.0", "curated_skills": "CC-BY-4.0"},
+                "sources": {"malicious_skill_bench": {"kind": "hf", "dataset": REPO_ID, "config": "primary", "split": "train"},
+                            "skillspector_fixtures": {"kind": "git", "url": SKILLSPECTOR_URL, "ref": "main",
+                                                      "commit": git_commit(fixtures_repo)}}}
     if strict and problems:
         raise SystemExit("count validation failed:\n" + "\n".join(problems))
     write_jsonl(out_path, items)

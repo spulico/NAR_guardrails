@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from nar_guardrails.detectors.base import Detector, Prediction, register
+from nar_guardrails.detectors.base import Detector, Prediction, hf_revision, register
 from nar_guardrails.device import pick_device
 
 LEVEL_SCORE = {"safe": 0.0, "controversial": 0.5, "unsafe": 1.0}
@@ -80,6 +80,7 @@ class Qwen3GuardDetector(Detector):
                                                revision=rev, config=config,
                                                torch_dtype=torch.float32).to(self.device).eval()
         _patch_remote_masks(self.model)
+        self.revision = hf_revision(cfg["model_id"], rev, config)
 
     def _moderate(self, text: str) -> dict:
         # Model card: tokenize the chat, feed ids up to the end of the user turn

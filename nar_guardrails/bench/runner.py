@@ -9,7 +9,7 @@ from pathlib import Path
 from time import perf_counter
 
 from nar_guardrails.bench.cache import VerdictCache, cache_path
-from nar_guardrails.bench.manifest import collect_environment
+from nar_guardrails.bench.manifest import collect_environment, file_sha256
 from nar_guardrails.detectors import build_detector, load_models_cfg
 from nar_guardrails.detectors.policy import load_policy, pick_examples
 from nar_guardrails.schema import Item, read_items, write_jsonl
@@ -160,6 +160,7 @@ def run(cfg: RunConfig) -> Path:
         stale.unlink()
     manifest = {"run_id": run_id, "track": cfg.track, "split": cfg.split, "protocol": cfg.protocol, "variant": cfg.variant,
                 "policy": policy.ref, "n_examples": len(policy.examples), "n_items": len(items), "limit": cfg.limit, "seed": cfg.seed,
+                "items_sha256": file_sha256(Path(cfg.data_dir) / f"{cfg.track}.jsonl"),
                 "environment": env, "detectors": {}}
     manifest_path = run_dir / "manifest.json"
 
@@ -176,6 +177,7 @@ def run(cfg: RunConfig) -> Path:
         except Exception as e:  # optional backends, gated downloads, missing deps
             entry.update(status="skipped", reason=f"{type(e).__name__}: {e}")
         else:
+            entry["revision"] = getattr(det, "revision", None)
             try:  # a corrupt cache file fails this detector only
                 cache = VerdictCache(cache_path(cfg.cache_dir or Path(cfg.results_dir) / "cache", key, policy.hash, cfg.track))
                 _run_detector(key, det, items, cache, run_dir, cfg, models_cfg, entry)

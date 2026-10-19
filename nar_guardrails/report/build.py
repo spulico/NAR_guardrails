@@ -6,6 +6,7 @@ from pathlib import Path
 import pandas as pd
 
 from nar_guardrails.bench.cost import load_prices
+from nar_guardrails.bench.manifest import file_sha256
 from nar_guardrails.bench.thresholds import thresholds_for_run, write_thresholds
 from nar_guardrails.detectors import load_models_cfg
 from nar_guardrails.report.charts import scatter_cost_latency, scenario_heatmap
@@ -99,8 +100,16 @@ def build_report(results_dir: Path, run_id: str = "latest", dev_run_id: str | No
         proto = f", protocol {m['protocol']}" if m.get("protocol") else ""
         notes.append(f"Thresholds chosen on dev run `{dev_dir.name}`{proto} ({len(dev_items)} items).")
     else:
+        dev = None
         notes.append("No dev run found for this track and policy: thresholds default to 0.5 for every detector.")
     write_thresholds(run_dir / "thresholds.json", thresholds)
+    items_path = Path(data_dir) / f"{m['track']}.jsonl"
+    current_sha = file_sha256(items_path)
+    for checked in (m, dev["manifest"] if dev else None):
+        recorded = (checked or {}).get("items_sha256")
+        if recorded and current_sha and recorded != current_sha:
+            notes.append(f"**Warning:** `{items_path}` changed after run `{checked['run_id']}` (sha256 {recorded[:12]} "
+                         f"then, {current_sha[:12]} now); its items may not match the verdicts.")
 
     title = f"# NAR guardrails report: {m['track']} / {m['split']}" + (f" / {m['protocol']}" if m.get("protocol") else "")
     env = m.get("environment", {})

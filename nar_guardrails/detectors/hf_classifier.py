@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from nar_guardrails.detectors.base import Detector, Prediction, register
+from nar_guardrails.detectors.base import Detector, Prediction, hf_revision, register
 from nar_guardrails.device import pick_device
 
 
@@ -17,6 +17,7 @@ class HFClassifier(Detector):
         self.tok = AutoTokenizer.from_pretrained(cfg["model_id"], revision=cfg.get("revision"))
         self.model = AutoModelForSequenceClassification.from_pretrained(
             cfg["model_id"], revision=cfg.get("revision")).to(self.device).eval()
+        self.revision = hf_revision(cfg["model_id"], cfg.get("revision"), self.model.config)
         self.max_length = int(cfg.get("max_length", 512))
         self.window = bool(cfg.get("window", False))
         id2label = {int(k): str(v) for k, v in self.model.config.id2label.items()}

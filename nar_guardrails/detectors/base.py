@@ -3,6 +3,7 @@ from __future__ import annotations
 import math
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
+from pathlib import Path
 from time import perf_counter
 from typing import Any
 
@@ -39,8 +40,31 @@ def _sanitise(p: Prediction) -> Prediction:
     return Prediction(prob, label, p.outcome, p.usage, p.raw)
 
 
+def hf_revision(model_id: str | None, revision: str | None = None, config: Any = None) -> str | None:
+    """Commit of the Hub snapshot a model was loaded from, or None if it cannot be determined.
+
+    Looks in the local Hugging Face cache only (no network): snapshot_download returns
+    <cache>/models--org--name/snapshots/<commit>. Falls back to the loaded config's commit hash.
+    """
+    if model_id:
+        try:
+            from huggingface_hub import snapshot_download
+
+            name = Path(snapshot_download(model_id, revision=revision, local_files_only=True)).name
+            if name:
+                return name
+        except Exception:  # not cached, a local path, offline errors: provenance is best effort
+            pass
+    for attr in ("_commit_hash", "commit_hash"):
+        val = getattr(config, attr, None)
+        if isinstance(val, str) and val:
+            return val
+    return None
+
+
 class Detector(ABC):
     key: str = "detector"
+    revision: str | None = None  # resolved Hub commit for HF-loaded models; recorded in the run manifest
 
     def __init__(self, cfg: dict, policy: Policy):
         self.cfg = cfg

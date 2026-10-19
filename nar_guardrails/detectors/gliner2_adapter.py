@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from nar_guardrails.detectors.base import Detector, Prediction, register
+from nar_guardrails.detectors.base import Detector, Prediction, hf_revision, register
 from nar_guardrails.detectors.policy import Policy
 from nar_guardrails.device import pick_device
 
@@ -45,6 +45,7 @@ class GLiNER2Detector(Detector):
         except Exception:
             self.model.to("cpu")
         self.schema, self.task, self.positive = self.build_schema(self.mode, policy)
+        self.revision = hf_revision(cfg["model_id"], cfg.get("revision"))
 
     def predict_texts(self, texts: list[str]) -> list[Prediction]:
         texts = [t if t.strip() else "(empty)" for t in texts]

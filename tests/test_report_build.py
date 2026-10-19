@@ -182,3 +182,16 @@ def test_report_ignores_other_protocol_for_variant_pairing(tmp_path: Path):
     run(RunConfig(**base, protocol="SD", run_id="b", variant="text+scripts"))
     md = (build_report(res, "a", data_dir=d, models_cfg=SKILL_MODELS) / "report.md").read_text()
     assert "no text+scripts run found" in md
+
+
+def test_report_warns_when_items_file_changed_since_the_runs(tmp_path: Path):
+    d = _data(tmp_path)
+    res = tmp_path / "results"
+    _run(res, d, "dev1", "dev")
+    _run(res, d, "test1", "test")
+    md = (build_report(res, "test1", "dev1", data_dir=d, models_cfg=MODELS) / "report.md").read_text()
+    assert "changed after run" not in md
+    with (d / "prompts.jsonl").open("a", encoding="utf-8") as f:
+        f.write(json.dumps({"id": "x:new", "track": "prompts", "text": "new", "label": 0, "split": "test"}) + "\n")
+    md = (build_report(res, "test1", "dev1", data_dir=d, models_cfg=MODELS) / "report.md").read_text()
+    assert "changed after run `test1`" in md and "changed after run `dev1`" in md
