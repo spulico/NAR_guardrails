@@ -1,14 +1,16 @@
 from __future__ import annotations
 
 import json
+import math
 import re
 from pathlib import Path
 
+import numpy as np
 import pandas as pd
 
 from nar_guardrails.bench.cost import summarize_cost
 from nar_guardrails.bench.latency import latency_summary
-from nar_guardrails.bench.metrics import auroc, basic_metrics, bootstrap_ci, fpr_at_recall, usable
+from nar_guardrails.bench.metrics import USABLE_OUTCOMES, auroc, basic_metrics, bootstrap_ci, fpr_at_recall, usable
 from nar_guardrails.schema import Item, Verdict, read_verdicts
 
 _SEED = re.compile(r"^(.*)-seed(\d+)$")
@@ -29,7 +31,38 @@ def split_seed(key: str) -> tuple[str, int | None]:
 
 
 def _thr(thresholds: dict, key: str, which: str) -> float:
-    return float(thresholds.get(key, {}).get(which, 0.5))
+    val = (thresholds.get(key) or {}).get(which)
+    return 0.5 if val is None else float(val)
+
+
+def _has_thr(thresholds: dict, key: str, which: str) -> bool:
+    return (thresholds.get(key) or {}).get(which) is not None
+
+
+def _restrict(items: list[Item], verdicts: list[Verdict]) -> list[Verdict]:
+    ids = {i.id for i in items}
+    return [v for v in verdicts if v.item_id in ids]
+
+
+def _boot_pair(y: list[int], scores: list[float], thr: float, n_boot: int, seed: int, alpha: float = 0.05):
+    nan = float("nan")
+    rng = np.random.default_rng(seed)
+    y_arr, s_arr = np.asarray(y), np.asarray(scores)
+    n = len(y_arr)
+    rec, fpr = [], []
+    for _ in range(n_boot):
+        idx = rng.integers(0, n, n)
+        m = basic_metrics(y_arr[idx].tolist(), s_arr[idx].tolist(), thr)
+        if not math.isnan(m["recall"]):
+            rec.append(m["recall"])
+        if not math.isnan(m["fpr"]):
+            fpr.append(m["fpr"])
+
+    def ci(vals):
+        if not vals:
+            return nan, nan
+        return float(np.quantile(vals, alpha / 2)), float(np.quantile(vals, 1 - alpha / 2))
+    return ci(rec), ci(fpr)
 
 
 def _kind(models_cfg: dict, key: str) -> str:
@@ -39,14 +72,22 @@ def _kind(models_cfg: dict, key: str) -> str:
 
 def leaderboard(items: list[Item], verdicts_by_det: dict[str, list[Verdict]], thresholds: dict, prices: dict,
                 models_cfg: dict, n_boot: int = 1000, seed: int = 0) -> pd.DataFrame:
+    nan = float("nan")
     rows = []
-    for key, vs in verdicts_by_det.items():
+    for key, all_vs in verdicts_by_det.items():
+        vs = _restrict(items, all_vs)
         y, s, _ = usable(items, vs)
         thr = _thr(thresholds, key, "f1")
-        thr_default = "f1" not in thresholds.get(key, {})
+        thr_default = not _has_thr(thresholds, key, "f1")
         m = basic_metrics(y, s, thr) if y else {}
-        rec_ci = bootstrap_ci(y, s, lambda a, b: basic_metrics(a, b, thr)["recall"], n_boot, seed) if y else (None, None)
-        fpr_ci = bootstrap_ci(y, s, lambda a, b: basic_metrics(a, b, thr)["fpr"], n_boot, seed) if y else (None, None)
+        rec_ci, fpr_ci = _boot_pair(y, s, thr, n_boot, seed) if y else ((nan, nan), (nan, nan))
+        op = {}
+        for tag, which in (("r95", "recall95"), ("r99", "recall99")):
+            if y and _has_thr(thresholds, key, which):
+                om = basic_metrics(y, s, _thr(thresholds, key, which))
+                op[f"recall_at_{tag}"], op[f"fpr_at_{tag}"] = om["recall"], om["fpr"]
+            else:
+                op[f"recall_at_{tag}"], op[f"fpr_at_{tag}"] = nan, nan
         lat = latency_summary(vs)
         base, _ = split_seed(key)
         cost = summarize_cost(vs, prices.get(models_cfg.get(base, {}).get("model_id")))
@@ -54,64 +95,67 @@ def leaderboard(items: list[Item], verdicts_by_det: dict[str, list[Verdict]], th
                      "recall": m.get("recall"), "recall_lo": rec_ci[0], "recall_hi": rec_ci[1],
                      "fpr": m.get("fpr"), "fpr_lo": fpr_ci[0], "fpr_hi": fpr_ci[1],
                      "precision": m.get("precision"), "f1": m.get("f1"), "auroc": auroc(y, s) if y else None,
-                     "fpr_at_95": fpr_at_recall(y, s, 0.95)[0] if y else None,
-                     "fpr_at_99": fpr_at_recall(y, s, 0.99)[0] if y else None,
+                     **op,
+                     "fpr_at_95_oracle": fpr_at_recall(y, s, 0.95)[0] if y else None,
+                     "fpr_at_99_oracle": fpr_at_recall(y, s, 0.99)[0] if y else None,
                      "p50_ms": lat["p50_ms"], "p95_ms": lat["p95_ms"], "per_1k_usd": cost["per_1k_usd"],
                      "refused": sum(v.outcome == "refused" for v in vs), "errors": sum(v.outcome == "error" for v in vs),
                      "truncated": sum(v.outcome == "truncated" for v in vs)})
     return pd.DataFrame(rows)
 
 
-def _group_metric(items: list[Item], vs: list[Verdict], thr: float, group_of) -> dict:
-    out = {}
+def _group_table(items: list[Item], verdicts_by_det: dict[str, list[Verdict]], thresholds: dict, group_of) -> tuple[list, dict]:
     groups = sorted({group_of(i) for i in items})
-    for g in groups:
-        sub = [i for i in items if group_of(i) == g]
-        y, s, _ = usable(sub, vs)
-        if not y:
-            out[g] = (None, len(sub), None)
-            continue
-        m = basic_metrics(y, s, thr)
-        out[g] = ((m["recall"] if sub[0].label == 1 else m["fpr"]), len(sub), auroc(y, s))
-    return out
+    res = {}
+    for key, all_vs in verdicts_by_det.items():
+        vs = _restrict(items, all_vs)
+        thr = _thr(thresholds, key, "f1")
+        for g in groups:
+            sub = [i for i in items if group_of(i) == g]
+            y, s, _ = usable(sub, vs)
+            if y:
+                m = basic_metrics(y, s, thr)
+                res[(key, g)] = (m["recall"], m["fpr"], auroc(y, s))
+            else:
+                res[(key, g)] = (float("nan"), float("nan"), None)
+    return groups, res
 
 
 def scenario_table(items: list[Item], verdicts_by_det: dict[str, list[Verdict]], thresholds: dict) -> pd.DataFrame:
-    scenarios = sorted({i.scenario for i in items})
-    df = pd.DataFrame(index=scenarios)
-    df["n"] = [sum(i.scenario == sc for i in items) for sc in scenarios]
-    df["metric"] = ["recall" if next(i for i in items if i.scenario == sc).label == 1 else "fpr" for sc in scenarios]
-    for key, vs in verdicts_by_det.items():
-        g = _group_metric(items, vs, _thr(thresholds, key, "f1"), lambda i: i.scenario)
-        df[key] = [g[sc][0] for sc in scenarios]
+    groups, res = _group_table(items, verdicts_by_det, thresholds, lambda i: i.scenario)
+    df = pd.DataFrame(index=groups)
+    df["n"] = [sum(i.scenario == g for i in items) for g in groups]
+    labels = [{i.label for i in items if i.scenario == g} for g in groups]
+    metric = ["mixed" if len(ls) > 1 else ("recall" if ls == {1} else "fpr") for ls in labels]
+    df["metric"] = metric
+    for key in verdicts_by_det:
+        df[key] = [res[(key, g)][1] if mt == "fpr" else res[(key, g)][0] for g, mt in zip(groups, metric)]
+        if "mixed" in metric:
+            df[f"{key}_fpr"] = [res[(key, g)][1] if mt == "mixed" else float("nan") for g, mt in zip(groups, metric)]
     return df
 
 
 def source_table(items: list[Item], verdicts_by_det: dict[str, list[Verdict]], thresholds: dict) -> pd.DataFrame:
-    sources = sorted({i.source for i in items})
-    df = pd.DataFrame(index=sources)
-    df["n"] = [sum(i.source == so for i in items) for so in sources]
-    for key, vs in verdicts_by_det.items():
-        thr = _thr(thresholds, key, "f1")
-        rec, fpr, auc = [], [], []
-        for so in sources:
-            sub = [i for i in items if i.source == so]
-            y, s, _ = usable(sub, vs)
-            m = basic_metrics(y, s, thr) if y else {}
-            rec.append(m.get("recall")); fpr.append(m.get("fpr")); auc.append(auroc(y, s) if y else None)
-        df[f"{key}_recall"], df[f"{key}_fpr"], df[f"{key}_auroc"] = rec, fpr, auc
+    groups, res = _group_table(items, verdicts_by_det, thresholds, lambda i: i.source)
+    df = pd.DataFrame(index=groups)
+    df["n"] = [sum(i.source == g for i in items) for g in groups]
+    for key in verdicts_by_det:
+        df[f"{key}_recall"] = [res[(key, g)][0] for g in groups]
+        df[f"{key}_fpr"] = [res[(key, g)][1] for g in groups]
+        df[f"{key}_auroc"] = [res[(key, g)][2] for g in groups]
     return df
 
 
 def headline(items, verdicts_by_det, thresholds, prices, models_cfg) -> pd.DataFrame:
     lb = leaderboard(items, verdicts_by_det, thresholds, prices, models_cfg, n_boot=0)
-    return lb[["detector", "kind", "fpr_at_95", "p50_ms", "per_1k_usd", "auroc"]].sort_values("fpr_at_95")
+    cols = ["detector", "kind", "recall_at_r95", "fpr_at_r95", "p50_ms", "per_1k_usd", "auroc"]
+    return lb[cols].sort_values("fpr_at_r95", na_position="last").reset_index(drop=True)
 
 
 def default_label_table(items, verdicts_by_det) -> pd.DataFrame:
     rows = []
-    for key, vs in verdicts_by_det.items():
-        by = {v.item_id: v for v in vs}
+    for key, all_vs in verdicts_by_det.items():
+        by = {v.item_id: v for v in _restrict(items, all_vs) if v.outcome in USABLE_OUTCOMES}
         pairs = [(i.label, by[i.id].label) for i in items if i.id in by and by[i.id].label in (0, 1)]
         if not pairs:
             rows.append({"detector": key, "n": 0}); continue
