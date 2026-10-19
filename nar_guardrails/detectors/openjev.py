@@ -19,15 +19,26 @@ class OpenJevDetector(Detector):
         self.url = cfg["url"]
         self.timeout = float(cfg.get("timeout_s", 60))
         self.session = session or requests.Session()
-        health = cfg.get("health_url") or self.url.rsplit("/v1/", 1)[0] + "/health"
-        try:
-            r = self.session.get(health, timeout=5)
-            ok = r.status_code == 200
-        except Exception:
-            ok = False
-        if not ok:
-            raise DetectorUnavailable(f"SystemOne server not reachable at {health}; see scripts/systemone_servers.md")
         self.questions = {"malicious": {"type": "noul", "instructions": policy.question}}
+        health = cfg.get("health_url") or self.url.rsplit("/v1/", 1)[0] + "/health"
+        self.health_mode = None
+        try:
+            if self.session.get(health, timeout=5).status_code == 200:
+                self.health_mode = "get"
+        except Exception:
+            pass
+        if self.health_mode is None:
+            try:
+                r = self.session.post(self.url, json={"state": "ping", "questions": self.questions},
+                                      timeout=min(self.timeout, 15))
+                if r.status_code == 200:
+                    self.health_mode = "probe"
+            except Exception:
+                pass
+        if self.health_mode is None:
+            raise DetectorUnavailable(
+                f"SystemOne server not reachable (GET {health} and probe POST {self.url} failed); "
+                "see scripts/systemone_servers.md")
 
     def predict_texts(self, texts: list[str]) -> list[Prediction]:
         out = []

@@ -29,6 +29,6 @@ basal-serve --model Remek/basal-2.0-mini --mode mlx --port 8000
 
 GGUF / llama.cpp alternative: `basal-serve --model <gguf model> --mode gguf --port 8000`. The README gives no install commands for it; see its `docs/INSTALL.md#ollama-and-llamacpp-gguf`.
 
-The README documents no health endpoint (only `POST /v1/systemone` and `/mcp`), so `configs/models.yaml` keeps the default `/health`. If your basal build uses another path, set `health_url` on the `basal-2.0-mini` entry. Verify with `curl http://127.0.0.1:8000/health`.
+The README documents no health endpoint (only `POST /v1/systemone` and `/mcp`). The health path is therefore optional: the adapter first tries `GET /health` (or `health_url` if set), and if that fails it sends one probe `POST` to `/v1/systemone` (`{"state": "ping", ...}`, HTTP 200 means healthy). Only when both fail is the detector skipped. The adapter records which path worked in `health_mode` (`"get"` or `"probe"`).
 
 Response shape: `{"answers": {"malicious": {"type": "noul", "noul": p_yes, "probabilities": {...}, "confidence": c}}, "usage": {...}}`.
