@@ -1,0 +1,3 @@
+pdfplumbr==0.11.4
+reqeusts==2.32.9
+python-dateutils==2.9.1

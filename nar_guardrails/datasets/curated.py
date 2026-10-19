@@ -22,3 +22,59 @@ def load_curated_prompts(path: Path = Path("data/curated/prompts.jsonl")) -> lis
                               scenario=d["scenario"], source="curated", split="test",
                               meta={**CURATED_META, "note": d.get("note", "")}))
     return items
+
+
+from nar_guardrails.schema import text_sha  # noqa: E402
+
+SKILL_CATEGORIES = ("data-exfiltration", "credential-harvesting", "anti-refusal", "hidden-instructions",
+                    "download-and-execute", "persistence", "mcp-tool-poisoning", "privilege-escalation",
+                    "typosquatted-dependency", "memory-poisoning")
+SKILLS_META = {"license": "CC-BY-4.0", "published": "2026-10", "splits": {"MSD": "test", "SD": "test"}}
+SCRIPT_SEP = "\n\n--- scripts ---\n"
+
+
+def _skill_dir_items(folder: Path, item_id: str, label: int, scenario: str, source: str, meta: dict) -> list[Item]:
+    md = next((p for p in (folder / "SKILL.md", folder / "skill.md") if p.exists()), None)
+    if md is None:
+        raise FileNotFoundError(f"no SKILL.md in {folder}")
+    text = md.read_text(encoding="utf-8")
+    items = [Item(id=item_id, track="skills", text=text, label=label, scenario=scenario, source=source, split="test",
+                  variant="text", meta=dict(meta))]
+    extras = sorted(p for p in folder.rglob("*") if p.is_file() and p != md and p.suffix in
+                    {".sh", ".py", ".js", ".ts", ".rb", ".ps1", ".yaml", ".yml", ".json", ".toml", ".txt", ".md"})
+    if extras:
+        joined = text + SCRIPT_SEP + "\n".join(f"## {p.relative_to(folder)}\n{p.read_text(encoding='utf-8', errors='replace')}" for p in extras)
+        items.append(Item(id=item_id + "#scripts", track="skills", text=joined, label=label, scenario=scenario,
+                          source=source, split="test", variant="text+scripts", meta=dict(meta)))
+    return items
+
+
+def load_curated_skills(root: Path = Path("data/curated/skills")) -> list[Item]:
+    labels = [json.loads(l) for l in (Path(root) / "labels.jsonl").read_text(encoding="utf-8").splitlines() if l.strip()]
+    items = []
+    for d in labels:
+        items.extend(_skill_dir_items(Path(root) / d["slug"], f"curated_skill:{d['slug']}", int(d["label"]), d["category"],
+                                      "curated_skills", SKILLS_META))
+    return items
+
+
+def load_skillspector_fixtures(repo: Path, labels: Path = Path("data/curated/skillspector_labels.jsonl")) -> list[Item]:
+    meta = {"license": "Apache-2.0", "published": "2026", "splits": {"MSD": "test", "SD": "test"}}
+    items = []
+    for line in Path(labels).read_text(encoding="utf-8").splitlines():
+        if not line.strip():
+            continue
+        d = json.loads(line)
+        folder = Path(repo) / "tests" / "fixtures" / d["name"]
+        if not (folder / "SKILL.md").exists() and not (folder / "skill.md").exists():
+            continue  # fixture without a manifest (e.g. mcp_registry) is not a skill
+        items.extend(_skill_dir_items(folder, f"skillspector:{d['name']}", int(d["label"]), d["category"],
+                                      "skillspector_fixtures", meta))
+    return items
+
+
+def assert_no_overlap(held_out: list[Item], train: list[Item]) -> None:
+    train_hashes = {text_sha(i.text) for i in train}
+    clashes = [i.id for i in held_out if text_sha(i.text) in train_hashes]
+    if clashes:
+        raise ValueError(f"held-out skills appear in training data: {clashes}")
