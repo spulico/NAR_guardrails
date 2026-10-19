@@ -228,3 +228,13 @@ def test_cli_run_passes_variant(monkeypatch, tmp_path):
     assert cli.main(["run", "--track", "skills", "--split", "test"]) == 0
     assert [c.variant for c in seen] == ["text+scripts", "text"]
     assert cli.main(["run", "--track", "skills", "--split", "test", "--variant", "bogus"]) == 2
+
+
+def test_reused_run_id_drops_verdict_files_from_the_previous_run(tmp_path):
+    d = _data(tmp_path)
+    out = run(_cfg(tmp_path, d, detectors=["fake", "flaky"], run_id="same"))
+    assert {f.name for f in out.glob("verdicts_*.jsonl")} == {"verdicts_fake.jsonl", "verdicts_flaky.jsonl"}
+    (out / "verdicts_down.jsonl").write_text("{}\n")   # e.g. a detector that ran before but is skipped now
+    out2 = run(_cfg(tmp_path, d, detectors=["fake", "down"], run_id="same"))
+    assert out2 == out and {f.name for f in out.glob("verdicts_*.jsonl")} == {"verdicts_fake.jsonl"}
+    assert set(json.loads((out / "manifest.json").read_text())["detectors"]) == {"fake", "down"}

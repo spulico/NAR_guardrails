@@ -141,6 +141,8 @@ def run(cfg: RunConfig) -> Path:
     run_id = cfg.run_id or datetime.now().strftime("%Y%m%d-%H%M%S")
     run_dir = Path(cfg.results_dir) / run_id
     run_dir.mkdir(parents=True, exist_ok=True)
+    for stale in run_dir.glob("verdicts_*.jsonl"):  # a reused run id keeps only this run's verdict files
+        stale.unlink()
     manifest = {"run_id": run_id, "track": cfg.track, "split": cfg.split, "protocol": cfg.protocol, "variant": cfg.variant,
                 "policy": policy.ref, "n_examples": len(policy.examples), "n_items": len(items), "limit": cfg.limit, "seed": cfg.seed,
                 "environment": env, "detectors": {}}
