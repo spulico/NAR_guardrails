@@ -205,3 +205,34 @@ def test_skills_report_explains_precision_at_prevalence(tmp_path: Path):
     assert "precision_at_10pct" in md and "if 10% or 1% of skills were malicious" in md
     _run(res, _data(tmp_path), "pr", "test")
     assert "if 10% or 1% of skills" not in (build_report(res, "pr", data_dir=_data(tmp_path), models_cfg=MODELS) / "report.md").read_text()
+
+
+def test_report_lists_failed_detectors_sources_licences_caveat_and_latency_window(tmp_path: Path):
+    from nar_guardrails.detectors.base import REGISTRY, Detector, Prediction, register
+
+    @register("report_all_error")
+    class AllError(Detector):
+        def predict_texts(self, texts):
+            return [Prediction(None, None, "error", None, "503 backend down") for _ in texts]
+
+    try:
+        d = _data(tmp_path)
+        (d / "prompts.build.json").write_text(json.dumps({
+            "licenses": {"curated": "CC-BY-4.0", "agentshield": "Apache-2.0"},
+            "counts": {"curated": 200, "agentshield": 530},
+            "sources": {"agentshield": {"kind": "git", "url": "https://github.com/doronp/agentshield-benchmark",
+                                        "ref": "main", "commit": "abcdef0123456789"}},
+            "skipped": {"bells": "GatedRepoError: access to the dataset is restricted"}}), encoding="utf-8")
+        res = tmp_path / "results"
+        models = {**MODELS, "dead": {"adapter": "report_all_error", "tracks": ["prompts"]}}
+        _run(res, d, "t", "test", detectors=("fake", "dead"), models=models)
+        m = json.loads((res / "t" / "manifest.json").read_text())
+        md = (build_report(res, "t", data_dir=d, models_cfg=models) / "report.md").read_text()
+    finally:
+        REGISTRY.pop("report_all_error", None)
+    assert "## Failed detectors\n- `dead`: all verdicts are errors: 503 backend down" in md
+    assert "| agentshield | Apache-2.0 |     530 | git https://github.com/doronp/agentshield-benchmark @ abcdef012345 |" in md
+    assert "## Skipped dataset sources\n- `bells`: GatedRepoError" in md
+    assert ("vendor classifiers may have trained on some public sources; the curated set and per-source tables are the "
+            "fair comparison; Qwen3Guard-Stream and granite-hap are content-safety models not injection detectors") in md
+    assert f"Latency measurement window: run started {m['environment']['timestamp']}, finished {m['finished']}" in md

@@ -74,6 +74,49 @@ def _items_for(run: dict, data_dir: Path):
     return [i for i in items if i.split == m["split"]]
 
 
+CAVEAT = ("Caveat: vendor classifiers may have trained on some public sources; the curated set and per-source tables "
+          "are the fair comparison; Qwen3Guard-Stream and granite-hap are content-safety models not injection detectors.")
+
+
+def _detector_status_md(manifest: dict) -> list[str]:
+    out = []
+    for status, heading in (("skipped", "## Skipped detectors"), ("failed", "## Failed detectors")):
+        rows = {k: v.get("reason") for k, v in manifest["detectors"].items() if v.get("status") == status}
+        if rows:
+            out += [heading, *[f"- `{k}`: {r}" for k, r in rows.items()], ""]
+    return out
+
+
+def _provenance(src: dict | None) -> str:
+    if not src:
+        return ""
+    if src.get("kind") == "git":
+        return f"git {src.get('url')} @ {(src.get('commit') or '?')[:12]}"
+    parts = [src.get("dataset"), src.get("config"), src.get("split")]
+    return "HF " + " / ".join(str(p) for p in parts if p)
+
+
+def _dataset_md(data_dir: Path, track: str) -> list[str]:
+    """Licence table and skipped sources from data/processed/<track>.build.json, when it exists."""
+    path = Path(data_dir) / f"{track}.build.json"
+    try:
+        build = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return []
+    if not isinstance(build, dict):
+        return []
+    licenses, counts, sources = build.get("licenses") or {}, build.get("counts") or {}, build.get("sources") or {}
+    out = []
+    if licenses:
+        df = pd.DataFrame([{"source": n, "licence": lic, "items": counts.get(n), "provenance": _provenance(sources.get(n))}
+                           for n, lic in licenses.items()])
+        out += [f"## Dataset sources and licences (from `{path.name}`)", df.to_markdown(index=False), ""]
+    skipped = build.get("skipped") or {}
+    if skipped:
+        out += ["## Skipped dataset sources", *[f"- `{n}`: {r}" for n, r in skipped.items()], ""]
+    return out
+
+
 def _md(df: pd.DataFrame, floatfmt: str = ".3f") -> str:
     if df.empty:
         return "_(no data)_"
@@ -113,13 +156,14 @@ def build_report(results_dir: Path, run_id: str = "latest", dev_run_id: str | No
 
     title = f"# NAR guardrails report: {m['track']} / {m['split']}" + (f" / {m['protocol']}" if m.get("protocol") else "")
     env = m.get("environment", {})
+    window = f"Latency measurement window: run started {env.get('timestamp')}" + (
+        f", finished {m['finished']}" if m.get("finished") else "") + f" (UTC), device {env.get('device')}, {env.get('platform')}."
     head = [title, f"Run `{m['run_id']}`, policy `{m['policy']}`, {len(items)} items, device {env.get('device')}, "
-                   f"commit {env.get('git_commit')}.", "", *notes, ""]
-    skipped = {k: v.get("reason") for k, v in m["detectors"].items() if v.get("status") == "skipped"}
-    skipped_md = ["## Skipped detectors", *[f"- `{k}`: {v}" for k, v in skipped.items()], ""] if skipped else []
+                   f"commit {env.get('git_commit')}.", "", window, "", *notes, ""]
+    tail_md = ["## Caveats", CAVEAT, "", *_dataset_md(data_dir, m["track"]), *_detector_status_md(m)]
 
     if not verdicts:
-        parts = head + ["No detector produced verdicts in this run, so there are no tables or charts.", "", *skipped_md]
+        parts = head + ["No detector produced verdicts in this run, so there are no tables or charts.", "", *tail_md]
         (run_dir / "report.md").write_text("\n".join(parts), encoding="utf-8")
         return run_dir
 
@@ -172,6 +216,6 @@ def build_report(results_dir: Path, run_id: str = "latest", dev_run_id: str | No
                     "## Models' own default labels", _md(dl), "",
                     *variant_md,
                     "## Charts", "![cost/latency](cost_latency.png)", "![scenarios](scenario_heatmap.png)", "",
-                    *skipped_md]
+                    *tail_md]
     (run_dir / "report.md").write_text("\n".join(parts), encoding="utf-8")
     return run_dir

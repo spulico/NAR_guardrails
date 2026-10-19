@@ -4,7 +4,7 @@ import gc
 import json
 from collections import Counter
 from dataclasses import dataclass, replace
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from time import perf_counter
 
@@ -189,6 +189,7 @@ def run(cfg: RunConfig) -> Path:
         del det  # free the model before loading the next one
         _free_memory()
         save()
+    manifest["finished"] = datetime.now(timezone.utc).isoformat()
     save()
     if cfg.update_latest:
         (Path(cfg.results_dir) / "LATEST").write_text(run_id + "\n", encoding="utf-8")
