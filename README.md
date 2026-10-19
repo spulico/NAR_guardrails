@@ -11,10 +11,10 @@ hf auth login                   # needed for gated models/datasets (older CLI: h
 export ANTHROPIC_API_KEY=...    # needed for the claude-* detectors
 ```
 
-Without credentials the Claude detectors are skipped (a missing key is detected at construction); gated models are skipped with a reason in the manifest, not failed.
+Without credentials the Claude detectors are skipped: construction fails when neither `ANTHROPIC_API_KEY`, `ANTHROPIC_AUTH_TOKEN` nor an SDK credentials profile resolves. Gated models you cannot access are skipped with a reason in the manifest, not failed.
 
 Gated models (accept each gate on its Hugging Face page after logging in): `promptguard2-86m` and `promptguard2-22m` (Meta Llama Prompt Guard 2), `sentinel` (qualifire/prompt-injection-sentinel).
-Gated datasets: `prodnull`, `bells`, `pliny`, `mindgard`. `make data` fails in strict mode if their counts are out of range; use `nar data build ... --no-strict` to build without them.
+Gated datasets: `prodnull`, `bells`, `pliny`, `mindgard`. A gated dataset that cannot be loaded is skipped, with the reason under `skipped` in `prompts.build.json`, and does not fail the strict build. Strict mode (the default) fails only when a source that did load has an item count outside its range in `configs/datasets.yaml`; `nar data build ... --no-strict` builds anyway and records the problems.
 
 Optional HTTP detectors `openjev-2b` and `basal-2.0-mini` are skipped until their servers run; see `scripts/systemone_servers.md`.
 
@@ -63,9 +63,12 @@ Rough cost from `configs/prices.yaml`, assuming about 4 characters per token and
 
 Each run writes `results/<run-id>/`:
 
-- `manifest.json` - config, git sha, per-detector status (`ok`, `skipped`, `error`) and skip reasons
+- `manifest.json` - config (track, split, protocol, variant, policy), git sha, start and finish time, `items_sha256` of the processed items file, and per detector its status, reason, Hub `revision` and counts. Statuses are `ok`, `skipped` (could not be constructed: missing credentials, gated model, server down) and `failed` (raised while running, or every verdict it computed was an error; its verdict file is still written)
 - `verdicts_<detector>.jsonl` - one verdict per item (outcome, `p_malicious`, latency, tokens)
-- `thresholds.json`, `report.md`, `cost_latency.png`, `scenario_heatmap.png` - written by `nar report`
+- `thresholds.json`, `report.md`, `leaderboard.csv`, `cost_latency.png`, `scenario_heatmap.png` - written by `nar report`
+
+`report.md` also lists skipped and failed detectors with their reasons, the dataset licence table and skipped sources from `<track>.build.json`, the latency measurement window, and a warning when `data/processed/<track>.jsonl` has changed since the runs. The leaderboard includes throughput (`items_per_s`, `s_per_1k`, from `--throughput` runs) and precision at 10% and 1% malicious prevalence.
+Build manifests (`data/processed/<track>.build.json`) record, per source, the git commit (`.nar_commit`) or the Hugging Face dataset id, config and split.
 
 Smoke runs go to `results/smoke-<timestamp>-<track>/`; `nar smoke` keeps its own cache there and does not update `results/LATEST`. It exits 1 if any detector is `failed` or `degraded` with no usable verdicts.
 `results/`, `data/raw/`, `data/processed/` and `models/` are gitignored; never commit them.

@@ -17,5 +17,5 @@ prompts:
   wildchat:       {min: 1000, max: 1000}
 skills:
   malicious_skill_bench: {min: 9700, max: 9740}
-  skillspector_fixtures: {min: 47,   max: 51}   # observed 49 real fixture dirs (SkillSpector main), +-5%
+  skillspector_fixtures: {min: 47,   max: 51}   # 32 labelled fixtures → 49 items (32 text + 17 text+scripts), +-5%
   curated_skills:        {min: 40,   max: 80}

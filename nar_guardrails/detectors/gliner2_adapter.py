@@ -31,6 +31,8 @@ class GLiNER2Detector(Detector):
         """
         if mode == "gliguard":
             return {"prompt_safety": ["safe", "unsafe"]}, "prompt_safety", "unsafe"
+        if mode != "decide":
+            raise ValueError(f"unknown gliner2 mode {mode!r}; expected 'decide' or 'gliguard'")
         schema = {"input_safety": {"malicious": policy.malicious, "benign": policy.benign}}
         return schema, "input_safety", "malicious"
 

@@ -20,7 +20,8 @@ def test_verdict_roundtrip(tmp_path: Path):
 
 def test_text_sha_normalises_whitespace_and_unicode():
     assert text_sha("a  b\n") == text_sha("a b")
-    assert text_sha("é") == text_sha("é")
+    assert "\u00e9" != "e\u0301"   # precomposed vs decomposed
+    assert text_sha("\u00e9") == text_sha("e\u0301")
     assert text_sha("a") != text_sha("b")
 
 
