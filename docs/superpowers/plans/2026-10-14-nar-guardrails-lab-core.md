@@ -1601,7 +1601,15 @@ Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>"
 
 ---
 
-### Task 9: Open-Jev HTTP adapter (optional detector)
+### Task 9: Jev-style HTTP adapter for Open-Jev and basal-2.0-mini (optional detectors)
+
+> **Amendment 2026-10-19 (user request):** this task also serves `Remek/basal-2.0-mini` through the same adapter. Additions to the original task text below:
+> - cfg gains an optional `health_url` (default: `url` with `/v1/systemone` replaced by `/health`); the basal server's actual health path is confirmed from the rkinas/basal README at implementation time and written into `configs/models.yaml`.
+> - `configs/models.yaml` gains the key `basal-2.0-mini` with `adapter: openjev`, `url: http://127.0.0.1:8000/v1/systemone`, `optional: true`, `batch_size: 1`, `tracks: [prompts, skills]`, plus `health_url` if it differs.
+> - The adapter's response parsing must accept the basal shape `{"answers": {"malicious": {"type": "noul", "noul": p_yes, "probabilities": {...}, "confidence": c}}, "usage": {...}}`; `noul_probability` already reads the `noul` key.
+> - `scripts/openjev_server.md` is renamed `scripts/systemone_servers.md` and documents both servers: Open-Jev (unchanged text) and basal (`uv venv` + install of the basal engine from its GitHub release tarball, then `basal-serve --model Remek/basal-2.0-mini --mode mlx --port 8000` on Apple Silicon, with the GGUF/llama.cpp alternative), including the fact that the basal engine must live in its own venv because it pins its own torch build.
+> - Add a unit test with the fake session returning the basal response shape and asserting `p_malicious == p_yes`.
+
 
 **Files:**
 - Create: `nar_guardrails/detectors/openjev.py`, `tests/test_openjev.py`, `scripts/openjev_server.md`

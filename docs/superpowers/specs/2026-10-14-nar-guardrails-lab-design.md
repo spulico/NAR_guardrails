@@ -22,7 +22,7 @@ Every result row carries accuracy metrics with confidence intervals, measured la
 
 **In scope**
 
-- Local models: Laya (EN; multilingual variant only as a context-length control), GLiNER2.5-Decide, GLiGuard, Open-Jev-2B (optional), Qwen3Guard-Stream-0.6B, ProtectAI DeBERTa v2, Llama Prompt Guard 2 (86M and 22M), Qualifire Sentinel, Granite Guardian HAP 125M, ModernBERT-large (fine-tuned only, skill track).
+- Local models: Laya (EN; multilingual variant only as a context-length control), GLiNER2.5-Decide, GLiGuard, Open-Jev-2B (optional), basal-2.0-mini (optional, added 2026-10-19), Qwen3Guard-Stream-0.6B, ProtectAI DeBERTa v2, Llama Prompt Guard 2 (86M and 22M), Qualifire Sentinel, Granite Guardian HAP 125M, ModernBERT-large (fine-tuned only, skill track).
 - Remote models: Claude Haiku 5.5 and Claude Sonnet 5.5 via the Anthropic SDK.
 - Fine-tuning on the skill track: Laya, GLiNER2.5-Decide, ModernBERT-large, Open-Jev-2B (optional).
 - English only.
@@ -185,6 +185,7 @@ MaliciousSkillBench's MSD split groups malicious skills into structural families
 | `gliner2-decide` | `fastino/GLiNER2.5-Decide` | `classify_text` with a two-label task whose label descriptions come from the policy, `include_confidence=True` | confidence of `malicious` |
 | `gliguard` | `fastino/gliguard-LLMGuardrails-300M` | `prompt_safety` task on the item text, both tracks; on the prompt track the `jailbreak_detection` task runs too and its label is stored in `raw` for scenario analysis. GLiGuard has fixed labels, so the policy text does not apply | P(unsafe) from `prompt_safety` |
 | `openjev-2b` | `ZefanCai/Open-Jev-2B` via local `/v1/systemone` server | same `noul` question as Laya | P(yes); optional, enabled only if the MPS smoke test passes |
+| `basal-2.0-mini` | `Remek/basal-2.0-mini` (1.5B, Bielik-1.5B-v3 base, Polish/English typed-decision model from the `basal` engine, Apache-2.0) via its local `/v1/systemone` server (`basal-serve`, MLX or GGUF mode on Apple Silicon) | same `noul` question as Laya | P(yes) from `answers.<q>.noul`; optional, enabled only if the server health check passes. Added 2026-10-19 at the user's request as the Jev-like Polish model; `basal-2.0` (4.5B) and `basal-omni-1.0-mini` (Gemma 4 E4B, multimodal, ~16 GB) are out of scope for the core run |
 | `qwen3guard-stream` | `Qwen/Qwen3Guard-Stream-0.6B` | prompt head | 1 − P(safe); model label is 1 only for `unsafe` |
 | `protectai` | `protectai/deberta-v3-base-prompt-injection-v2` | sequence classification | P(INJECTION) |
 | `promptguard2-86m`, `promptguard2-22m` | `meta-llama/Llama-Prompt-Guard-2-86M` / `-22M` | 512-token windows, max over windows | P(MALICIOUS) |
