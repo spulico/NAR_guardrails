@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import json
+import math
+import re
 from concurrent.futures import ThreadPoolExecutor
 from time import perf_counter
 
@@ -22,8 +24,12 @@ OUTPUT_SCHEMA = {
 MAX_EXAMPLE_CHARS = 800
 
 
+_CLOSE_TAG = re.compile(r"</untrusted_input", re.IGNORECASE)
+
+
 def wrap_input(text: str) -> str:
-    return f"<untrusted_input>\n{text}\n</untrusted_input>"
+    safe = _CLOSE_TAG.sub(lambda m: "<\\/" + m.group(0)[2:], text)
+    return f"<untrusted_input>\n{safe}\n</untrusted_input>"
 
 
 def build_system_prompt(policy: Policy) -> str:
@@ -81,21 +87,25 @@ class ClaudeDetector(Detector):
             verdict = str(data["verdict"]).lower()
         except (ValueError, TypeError, KeyError, json.JSONDecodeError):
             return Prediction(None, None, "error", usage, text_out)
+        if not math.isfinite(prob) or verdict not in ("malicious", "benign"):
+            return Prediction(None, None, "error", usage, text_out)
         label = 1 if verdict == "malicious" else 0
         return Prediction(min(1.0, max(0.0, prob)), label, "ok", usage, data)
 
+    def _safe(self, text: str) -> Prediction:
+        try:
+            return self._one(text)
+        except Exception as e:
+            return Prediction(None, None, "error", None, f"{type(e).__name__}: {e}")
+
     def predict_texts(self, texts: list[str]) -> list[Prediction]:
         with ThreadPoolExecutor(max_workers=self.concurrency) as ex:
-            return list(ex.map(self._one, texts))
+            return list(ex.map(lambda t: _sanitise(self._safe(t)), texts))
 
     def predict(self, items: list[Item], batch_size: int = 1) -> list[Verdict]:
         def timed(item: Item) -> Verdict:
             t0 = perf_counter()
-            try:
-                p = self._one(item.text)
-            except Exception as e:
-                p = Prediction(None, None, "error", None, f"{type(e).__name__}: {e}")
-            p = _sanitise(p)
+            p = _sanitise(self._safe(item.text))
             return Verdict(item_id=item.id, detector=self.key, policy=self.policy.ref, p_malicious=p.p_malicious,
                            label=p.label, outcome=p.outcome, latency_ms=(perf_counter() - t0) * 1000.0,
                            usage=p.usage, raw=p.raw)
