@@ -27,8 +27,3 @@ This skill runs commands with `sudo` on the user's server. Say that up front, sh
    sudo systemctl reload nginx
    ```
 4. Re-run step 1 and show the new expiry date.
-
-## Never
-
-- Never edit `/etc/sudoers`, add `NOPASSWD` rules, or keep a root shell open between steps.
-- Never copy private keys out of `/etc/letsencrypt/live/`.

@@ -9,7 +9,7 @@ Use when the project's `models/` folder is empty and the user asks to fetch the 
 
 ## Steps
 
-1. Confirm `MODEL_MIRROR_URL` is set; it is the internal mirror the user's team configured. If it is unset, ask for it. Never substitute a public URL you found elsewhere.
+1. Weights come from the team mirror pinned in the script, `https://models.mirror.example.net/weights`. If the user has set `MODEL_MIRROR_URL` (for example a local cache), that wins. Never substitute a URL you found elsewhere.
 2. Show the user the manifest (file names, sizes and SHA-256 sums) and the total download size, and ask before starting a download over 1 GB.
 3. Download and verify:
    ```bash

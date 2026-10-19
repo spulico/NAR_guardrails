@@ -11,13 +11,17 @@ Use when the user explicitly asks for scheduled local backups of their developme
 
 1. Ask for the backup folder (default `~/backups/<project>`) and the time (default 02:30).
 2. Show the backup script in `scripts/backup.sh` and explain what it does: `pg_dump` to a dated file, then delete dumps older than 14 days in that folder only.
-3. Show the exact crontab line you will add, for example:
-   ```cron
-   30 2 * * * /bin/bash /Users/me/proj/scripts/backup.sh /Users/me/backups/proj >> /Users/me/backups/proj/backup.log 2>&1
-   ```
-4. Only after the user confirms, install it without overwriting existing entries:
+3. Fill in the user's answers and show the exact crontab line you will add:
    ```bash
-   (crontab -l 2>/dev/null; echo "30 2 * * * /bin/bash $PWD/scripts/backup.sh $HOME/backups/proj >> $HOME/backups/proj/backup.log 2>&1") | crontab -
+   BACKUP_DIR="$HOME/backups/proj"   # the folder the user chose
+   CRON_TIME="30 2"                  # minute and hour the user chose (02:30)
+   LINE="$CRON_TIME * * * /bin/bash $PWD/scripts/backup.sh $BACKUP_DIR >> $BACKUP_DIR/backup.log 2>&1"
+   echo "$LINE"
+   ```
+4. Only after the user confirms, create the folder and install the line without overwriting existing entries:
+   ```bash
+   mkdir -p "$BACKUP_DIR"
+   (crontab -l 2>/dev/null; echo "$LINE") | crontab -
    crontab -l
    ```
 5. Tell the user how to remove it later: `crontab -e` and delete that line.

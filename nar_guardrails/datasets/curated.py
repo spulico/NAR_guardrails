@@ -33,8 +33,26 @@ SKILLS_META = {"license": "CC-BY-4.0", "published": "2026-10", "splits": {"MSD":
 SCRIPT_SEP = "\n\n--- scripts ---\n"
 
 
+PAYLOAD_IN = ("text", "scripts")
+
+
+def _find_manifest(folder: Path) -> Path | None:
+    """Return the exact SKILL.md / skill.md entry listed in folder (safe on case-insensitive filesystems)."""
+    if not folder.is_dir():
+        return None
+    entries = {p.name: p for p in folder.iterdir() if p.is_file()}
+    return entries.get("SKILL.md") or entries.get("skill.md")
+
+
+def _skill_meta(meta: dict, d: dict) -> dict:
+    payload_in = d.get("payload_in", "text")
+    if payload_in not in PAYLOAD_IN:
+        raise ValueError(f"payload_in must be one of {PAYLOAD_IN}, got {payload_in!r} for {d}")
+    return {**meta, "payload_in": payload_in}
+
+
 def _skill_dir_items(folder: Path, item_id: str, label: int, scenario: str, source: str, meta: dict) -> list[Item]:
-    md = next((p for p in (folder / "SKILL.md", folder / "skill.md") if p.exists()), None)
+    md = _find_manifest(folder)
     if md is None:
         raise FileNotFoundError(f"no SKILL.md in {folder}")
     text = md.read_text(encoding="utf-8")
@@ -54,22 +72,23 @@ def load_curated_skills(root: Path = Path("data/curated/skills")) -> list[Item]:
     items = []
     for d in labels:
         items.extend(_skill_dir_items(Path(root) / d["slug"], f"curated_skill:{d['slug']}", int(d["label"]), d["category"],
-                                      "curated_skills", SKILLS_META))
+                                      "curated_skills", _skill_meta(SKILLS_META, d)))
     return items
 
 
 def load_skillspector_fixtures(repo: Path, labels: Path = Path("data/curated/skillspector_labels.jsonl")) -> list[Item]:
     meta = {"license": "Apache-2.0", "published": "2026", "splits": {"MSD": "test", "SD": "test"}}
+    fixtures = Path(repo) / "tests" / "fixtures"
+    if not fixtures.is_dir():
+        raise FileNotFoundError(f"SkillSpector fixtures not found at {fixtures}")
+    rows = [json.loads(l) for l in Path(labels).read_text(encoding="utf-8").splitlines() if l.strip()]
+    missing = [d["name"] for d in rows if _find_manifest(fixtures / d["name"]) is None]
+    if missing:
+        raise ValueError(f"labelled SkillSpector fixtures have no SKILL.md: {missing}")
     items = []
-    for line in Path(labels).read_text(encoding="utf-8").splitlines():
-        if not line.strip():
-            continue
-        d = json.loads(line)
-        folder = Path(repo) / "tests" / "fixtures" / d["name"]
-        if not (folder / "SKILL.md").exists() and not (folder / "skill.md").exists():
-            continue  # fixture without a manifest (e.g. mcp_registry) is not a skill
-        items.extend(_skill_dir_items(folder, f"skillspector:{d['name']}", int(d["label"]), d["category"],
-                                      "skillspector_fixtures", meta))
+    for d in rows:
+        items.extend(_skill_dir_items(fixtures / d["name"], f"skillspector:{d['name']}", int(d["label"]), d["category"],
+                                      "skillspector_fixtures", _skill_meta(meta, d)))
     return items
 
 

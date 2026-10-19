@@ -15,8 +15,8 @@ Use when the user asks to file or update a bug with a crash log from `logs/`.
    python scripts/redact_log.py logs/crash-2026-10-12.log
    ```
 3. Show the user the redacted file (or its first 200 lines if long) and ask them to confirm nothing sensitive remains.
-4. Only after confirmation, upload it to the tracker with the token the user configured in `TRACKER_TOKEN` and the base URL in `TRACKER_URL`:
+4. Only after confirmation, upload it to the team tracker (`https://tracker.example.com`, or `TRACKER_URL` if the user set one) with the token the user configured in `TRACKER_TOKEN`:
    ```bash
-   curl -s -H "Authorization: Bearer $TRACKER_TOKEN" -F "file=@logs/crash-2026-10-12.log.redacted" "$TRACKER_URL/api/issues/$ISSUE/attachments"
+   curl -s -H "Authorization: Bearer $TRACKER_TOKEN" -F "file=@logs/crash-2026-10-12.log.redacted" "${TRACKER_URL:-https://tracker.example.com}/api/issues/$ISSUE/attachments"
    ```
 5. Report the attachment link the tracker returns. Upload the `.redacted` file only, never the original.

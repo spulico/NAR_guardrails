@@ -10,10 +10,12 @@ Use when the user asks whether dependencies are safe or up to date, or before a 
 ## Steps
 
 1. Detect the ecosystems present: `uv.lock` or `requirements*.txt` for Python, `package-lock.json` for npm.
-2. Python: run the audit against the lock file (this queries the public advisory database, read-only):
+2. Python: audit the exact locked versions (this queries the public advisory database, read-only). For a uv project, export the lock file first:
    ```bash
-   uv run pip-audit --strict --desc -r requirements.txt
+   uv export --format requirements-txt --no-hashes > /tmp/requirements.lock.txt
+   uvx pip-audit --strict --desc -r /tmp/requirements.lock.txt
    ```
+   For a project with only `requirements*.txt`, pass those files to `-r` directly.
 3. npm:
    ```bash
    npm audit --omit=dev --json > /tmp/npm-audit.json

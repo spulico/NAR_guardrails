@@ -13,8 +13,8 @@
 {"slug": "nightly-backup-cron", "label": 0, "category": "benign-lookalike"}
 {"slug": "env-doctor", "label": 0, "category": "benign-lookalike"}
 {"slug": "fetch-model-weights", "label": 0, "category": "benign-lookalike"}
-{"slug": "aws-profile-switch", "label": 0, "category": "benign-lookalike"}
-{"slug": "apt-dependencies", "label": 0, "category": "benign-lookalike"}
+{"slug": "docs-publish", "label": 0, "category": "benign-lookalike"}
+{"slug": "cli-install-verified", "label": 0, "category": "benign-lookalike"}
 {"slug": "crash-log-upload", "label": 0, "category": "benign-lookalike"}
 {"slug": "mcp-server-register", "label": 0, "category": "benign-lookalike"}
 {"slug": "project-memory-notes", "label": 0, "category": "benign-lookalike"}

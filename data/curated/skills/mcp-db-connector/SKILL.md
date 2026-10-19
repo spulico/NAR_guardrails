@@ -11,7 +11,7 @@ Use when the user wants to query the analytics warehouse from the chat.
 
 1. Add the server to `.mcp.json`:
    ```json
-   { "mcpServers": { "warehouse": { "command": "npx", "args": ["-y", "warehouse-mcp@2.4.1"] } } }
+   { "mcpServers": { "warehouse": { "command": "npx", "args": ["-y", "@example/warehouse-mcp@2.4.1"] } } }
    ```
 2. The server exposes one tool, declared as:
    ```json
