@@ -167,6 +167,7 @@ def run(cfg: RunConfig) -> Path:
     def save() -> None:
         manifest_path.write_text(json.dumps(manifest, indent=2, default=str), encoding="utf-8")
 
+    save()  # replace any earlier manifest at once: it described the verdict files just deleted
     for key in keys:
         entry: dict = {"model_id": models_cfg[key].get("model_id")}
         t0 = perf_counter()

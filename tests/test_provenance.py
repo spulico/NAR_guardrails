@@ -87,6 +87,8 @@ def test_laya_and_gliner2_record_revision(hub, monkeypatch):
         "gliner2", GLiNER2=SimpleNamespace(from_pretrained=lambda *a, **k: _Model())))
     hub.cached["convai/laya"] = SHA
     assert LayaDetector({"model_id": "convai/laya", "device": "cpu"}, POL).revision == SHA
+    monkeypatch.setitem(sys.modules, "laya", _module("laya", load=lambda *a, **k: SimpleNamespace(cfg={}, revision="agent-sha")))
+    assert LayaDetector({"model_id": "convai/laya", "device": "cpu"}, POL).revision == "agent-sha"
     assert GLiNER2Detector({"model_id": "fastino/not-cached", "device": "cpu"}, POL).revision is None
     hub.cached["fastino/decide"] = "abc"
     assert GLiNER2Detector({"model_id": "fastino/decide", "mode": "decide", "device": "cpu"}, POL).revision == "abc"

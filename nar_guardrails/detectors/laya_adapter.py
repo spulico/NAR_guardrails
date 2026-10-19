@@ -31,7 +31,8 @@ class LayaDetector(Detector):
             # laya.load has no max_len kwarg; Agent reads it from its cfg dict
             self.agent.cfg["max_len"] = int(cfg["max_length"])
         self.questions = self.build_questions(policy)
-        self.revision = hf_revision(cfg["model_id"], cfg.get("revision"))
+        # laya's Agent records the snapshot commit it loaded (it honours LAYA_REVISION); fall back to the cache
+        self.revision = getattr(self.agent, "revision", None) or hf_revision(cfg["model_id"], cfg.get("revision"))
 
     def predict_texts(self, texts: list[str]) -> list[Prediction]:
         states = [t if t.strip() else "(empty)" for t in texts]
