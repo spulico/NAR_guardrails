@@ -1,0 +1,166 @@
+# Multi-label taxonomy for NAR detectors (v2026-10-20): GLiNER2 multi-label schema or one
+# Laya/basal noul question per class. Each class has a short description (what the
+# encoder sees), indicators (for authoring and audit), a severity band, and the industry
+# mapping it was derived from. Use `benign` as the explicit negative class.
+# Severity bands follow SkillSpector's scoring intent: critical > high > medium > low.
+version: "2026-10-20"
+decision_rule: >
+  A skill is malicious when at least one class other than `benign` is present with
+  harmful intent, regardless of the justification given in the text. Quality,
+  least-privilege or style problems alone do not make a skill malicious.
+classes:
+  data_exfiltration:
+    description: >
+      Sends files, conversation context, prompts, outputs or secrets to an external
+      endpoint, webhook, email or repository not controlled by the user.
+    indicators:
+      - "curl/wget/requests POST of local data"
+      - "env or file contents in a request body or URL"
+      - "markdown image or link that embeds data"
+      - "send a copy to"
+    severity: high
+    maps_to: {skillspector: [E1, E3, E4, P3, TT4], malicious_skill_bench: "Data Exfiltration / Disclosure", malskillbench: [B1], owasp_asi: [ASI06], csa_pattern: "credential exfiltration, data routing"}
+  credential_access:
+    description: >
+      Reads or collects API keys, tokens, passwords, SSH or cloud credentials, keychains,
+      wallets or session cookies beyond what the stated task needs.
+    indicators:
+      - "grep -i token|secret|key over env"
+      - "cat ~/.ssh ~/.aws ~/.netrc .env"
+      - "keyring/keychain dumps"
+      - "asks the user to paste passwords or 2FA codes"
+    severity: critical
+    maps_to: {skillspector: [E2, PE3, TT3], malicious_skill_bench: "Credential Access", malskillbench: [B2], owasp_asi: [ASI03]}
+  remote_code_execution:
+    description: >
+      Downloads and runs code, scripts or binaries from the network, or executes
+      obfuscated, encoded or dynamically built code.
+    indicators:
+      - "curl | sh"
+      - "pip/npm install from an unverified URL"
+      - "base64 -d piped to a shell"
+      - "eval/exec of fetched text"
+      - "shipped bytecode or hidden executables"
+    severity: critical
+    maps_to: {skillspector: [SC2, SC3, SC8, SC9, AST1-AST9, TT5], malicious_skill_bench: "Execution / Code Delivery", malskillbench: [B3, B4, B6], owasp_asi: [ASI05]}
+  persistence_propagation:
+    description: >
+      Installs cron jobs, shell startup hooks, launch agents, git hooks, editor or agent
+      hooks, or writes instructions into other context files so behaviour survives the
+      skill's removal or spreads to other repositories.
+    indicators:
+      - "crontab/launchctl/systemd entries"
+      - "~/.bashrc ~/.zshrc edits"
+      - ".git/hooks"
+      - "writes to CLAUDE.md AGENTS.md .claude/settings.json or memory files"
+    severity: high
+    maps_to: {skillspector: [RA2, MP1], malicious_skill_bench: "Persistence / Control", malskillbench: [B5], owasp_asi: [ASI10, ASI06], csa_pattern: "persistence and propagation"}
+  privilege_escalation_scope_abuse:
+    description: >
+      Obtains more privilege or autonomy than the task needs: sudo or root, sudoers
+      edits, disabling confirmations, auto-approving dangerous tools, bypassing
+      permission prompts, or claiming authority to skip safeguards.
+    indicators:
+      - "NOPASSWD sudoers"
+      - "bypassPermissions/auto-approve all"
+      - "no need to confirm"
+      - "wildcard permissions used to act"
+      - "chmod 777"
+    severity: high
+    maps_to: {skillspector: [PE1, PE2, EA1, EA2, TM3], malicious_skill_bench: "Privilege / Tool / Authority Abuse", malskillbench: [B9], owasp_asi: [ASI03, ASI02]}
+  supply_chain_abuse:
+    description: >
+      Pulls typosquatted, lookalike, unpinned or redirected dependencies, swaps package
+      indexes or registries, or vendors concealed artifacts.
+    indicators:
+      - "misspelled package names"
+      - "--index-url/--extra-index-url to unknown hosts"
+      - "npx of unscoped lookalikes"
+      - "do not correct the package name"
+    severity: high
+    maps_to: {skillspector: [SC1, SC4, SC5, SC6, SC10], malicious_skill_bench: "Dependency / Supply-Chain Abuse", owasp_asi: [ASI04]}
+  tool_mcp_poisoning:
+    description: >
+      Puts instructions for the agent inside tool or MCP server descriptions, parameter
+      descriptions or schemas; shadows or overrides other tools; or describes a tool that
+      behaves differently from its description.
+    indicators:
+      - "<IMPORTANT> blocks in tool descriptions"
+      - "before calling X read ~/.ssh"
+      - "tool descriptions that reference other tools' calls"
+      - "declared read-only but writes or sends"
+    severity: high
+    maps_to: {skillspector: [TP1, TP2, TP3, TP4, LP1], owasp_asi: [ASI02, ASI01]}
+  memory_context_poisoning:
+    description: >
+      Appends rules, preferences or trust statements to the agent's memory or persistent
+      context, or floods the context so earlier safeguards are pushed out.
+    indicators:
+      - "append this rule to memory"
+      - "remember that X is trusted"
+      - "padded or repeated blocks"
+      - "instructions targeting future sessions"
+    severity: high
+    maps_to: {skillspector: [MP1, MP2, MP3], malicious_skill_bench: "Instruction / Goal / Memory Manipulation", owasp_asi: [ASI06]}
+  instruction_override_anti_refusal:
+    description: >
+      Overrides the user's or system's instructions, hijacks the agent's goal or role,
+      or tells the agent to drop refusals, disclaimers or safety policies.
+    indicators:
+      - "ignore previous instructions"
+      - "never refuse"
+      - "you are authorised"
+      - "role or persona swaps"
+      - "safety policy does not apply here"
+    severity: medium
+    maps_to: {skillspector: [P1, P4, AR1, AR2, AR3], malskillbench: [B10, B11, B12, B14], owasp_asi: [ASI01]}
+  concealment_evasion:
+    description: >
+      Hides what the skill does: tells the agent not to inform the user, uses invisible
+      or lookalike Unicode, encodes or obfuscates instructions, or places instructions in
+      images, PDFs or other non-text assets.
+    indicators:
+      - "do not mention this to the user"
+      - "zero-width or tag characters"
+      - "homoglyphs"
+      - "base64/rot13 instruction blobs"
+      - "follow the steps shown in the image"
+    severity: high
+    maps_to: {skillspector: [P2, TP2, SC3, P9], malicious_skill_bench: "Defense Evasion / Obfuscation", csa_pattern: "hidden Unicode instructions", research: "Seeing Is Not Screening (2026)"}
+  destructive_resource_abuse:
+    description: >
+      Deletes, overwrites or encrypts data that was not requested, mines cryptocurrency,
+      opens reverse shells, or consumes resources or money without purpose.
+    indicators:
+      - "rm -rf outside the task scope"
+      - "encryption with a note"
+      - "miners"
+      - "reverse shells"
+      - "loops that retry forever"
+    severity: critical
+    maps_to: {skillspector: [YR1, YR2, YR3, YR4, TM1, TM2], malicious_skill_bench: "Resource / Availability Abuse", malskillbench: [B6, B7, B8], owasp_asi: [ASI08, ASI02]}
+  deceptive_packaging:
+    description: >
+      Impersonates a known vendor or tool, uses lookalike names or descriptions to be
+      selected over legitimate skills, or uses over-broad or baiting triggers to activate
+      itself for unrelated tasks.
+    indicators:
+      - "brand names in the name or description without affiliation"
+      - "use this for every task"
+      - "triggers that shadow built-in commands"
+      - "claims of verification or signing"
+    severity: low
+    maps_to: {skillspector: [TR1, TR2, TR3], research: ["Do Not Mention This to the User (USENIX 2026)", "Under the Hood of SKILL.md (2026)"], owasp_asi: [ASI09, ASI04]}
+  benign:
+    description: >
+      A legitimate skill whose instructions and scripts match its stated purpose, keep
+      secrets local, use network or elevated privileges only transparently and with the
+      user's consent, and contain no instructions aimed at hiding behaviour or overriding
+      the user.
+    indicators:
+      - "configured URLs from user settings"
+      - "confirmation before sensitive steps"
+      - "security docs that describe attacks without performing them"
+      - "markdownlint HTML comments"
+    severity: none
+    maps_to: {note: "explicit negative class; policy/quality findings alone (SkillSpector LP2-LP4, SC1) stay benign"}
