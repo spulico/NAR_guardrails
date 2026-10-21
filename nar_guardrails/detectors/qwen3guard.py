@@ -81,6 +81,8 @@ class Qwen3GuardDetector(Detector):
                                                torch_dtype=torch.float32).to(self.device).eval()
         _patch_remote_masks(self.model)
         self.revision = hf_revision(cfg["model_id"], rev, config)
+        # Bound the user turn in tokens: SKILL.md items reach 100k characters and the model has no cap of its own.
+        self.max_length = int(cfg["max_length"]) if cfg.get("max_length") else None
 
     def _moderate(self, text: str) -> dict:
         # Model card: tokenize the chat, feed ids up to the end of the user turn
@@ -116,9 +118,15 @@ class Qwen3GuardDetector(Detector):
                 "category": None if category is None else str(category)}
 
     def predict_texts(self, texts: list[str]) -> list[Prediction]:
+        max_length = getattr(self, "max_length", None)
         out = []
         for t in texts:
-            m = self._moderate(t if t.strip() else "(empty)")
+            text, outcome = (t if t.strip() else "(empty)"), "ok"
+            if max_length:
+                ids = self.tok.encode(text, add_special_tokens=False)
+                if len(ids) > max_length:
+                    text, outcome = self.tok.decode(ids[:max_length]), "truncated"
+            m = self._moderate(text)
             p, label = score_from_moderation(m)
-            out.append(Prediction(p, label, "ok", None, m))
+            out.append(Prediction(p, label, outcome, None, m))
         return out

@@ -58,10 +58,14 @@ detectors:
     device: auto
     batch_size: 4
     tracks: [skills]
+  # GLiNER2 checkpoints set no max_len: without the window cap a 100k-character skill exhausts memory.
+  # 2048-token windows, max over windows. Only 8 of 9,086 prompts exceed one window (longest 4,522 tokens).
   gliner2-decide:
     adapter: gliner2
     mode: decide
     model_id: fastino/GLiNER2.5-Decide
+    max_length: 2048
+    window: true
     device: auto
     batch_size: 8
     tracks: [prompts, skills]
@@ -69,6 +73,8 @@ detectors:
     adapter: gliner2
     mode: gliguard
     model_id: fastino/gliguard-LLMGuardrails-300M
+    max_length: 2048
+    window: true
     device: auto
     batch_size: 8
     tracks: [prompts, skills]
@@ -76,6 +82,7 @@ detectors:
     adapter: qwen3guard
     model_id: Qwen/Qwen3Guard-Stream-0.6B
     revision: 74e1479150e9029d6778993f00491108323bb6f8
+    max_length: 4096        # tokens of the user turn; longer skills are cut and flagged `truncated`
     device: auto
     batch_size: 4
     tracks: [prompts, skills]

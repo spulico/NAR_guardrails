@@ -18,6 +18,23 @@ def test_score_from_moderation(m, expected):
     assert p == pytest.approx(expected[0]) and label == expected[1]
 
 
+def test_max_length_truncates_the_user_turn_and_flags_it():
+    class WordTok:
+        def encode(self, text, add_special_tokens=False):
+            return text.split()
+
+        def decode(self, ids):
+            return " ".join(ids)
+
+    d = Qwen3GuardDetector.__new__(Qwen3GuardDetector)
+    d.cfg, d.policy, d.max_length, d.tok = {"max_length": 3}, None, 3, WordTok()
+    seen = []
+    d._moderate = lambda text: (seen.append(text), {"label": "Safe", "probs": {"Safe": 0.9, "Unsafe": 0.1}})[1]
+    [short, long] = d.predict_texts(["a b", "a b c d e"])
+    assert seen == ["a b", "a b c"]
+    assert short.outcome == "ok" and long.outcome == "truncated" and long.p_malicious == pytest.approx(0.1)
+
+
 def test_predict_texts_uses_moderate_seam():
     d = Qwen3GuardDetector.__new__(Qwen3GuardDetector)
     d.cfg, d.policy = {}, POL

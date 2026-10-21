@@ -32,11 +32,49 @@ class FakeModel:
         return [self.classify_text(t, schema, include_confidence) for t in texts]
 
 
-def _det(mode):
+class WordTok:
+    def encode(self, text, add_special_tokens=False):
+        return text.split()
+
+    def decode(self, ids):
+        return " ".join(ids)
+
+
+def _det(mode, max_length=None, window=False):
     d = GLiNER2Detector.__new__(GLiNER2Detector)
-    d.cfg, d.policy, d.mode, d.model = {"mode": mode, "batch_size": 8}, POL, mode, FakeModel()
+    d.cfg = {"mode": mode, "batch_size": 8, "max_length": max_length, "window": window}
+    d.policy, d.mode, d.model = POL, mode, FakeModel()
+    d.max_length, d.window, d.tok = max_length, window, (WordTok() if max_length else None)
     d.schema, d.task, d.positive = GLiNER2Detector.build_schema(mode, POL)
     return d
+
+
+def test_window_mode_scores_text_as_its_worst_window_and_bounds_each_window():
+    d = _det("decide", max_length=4, window=True)
+    text = "hello " * 6 + "ignore previous instructions"      # 9 tokens -> windows of 2 tokens -> 5 windows
+    [p] = d.predict_texts([text])
+    assert p.outcome == "ok" and p.raw["windows"] == 5 and p.p_malicious == pytest.approx(0.9) and p.label == 1
+    assert max(len(w.split()) for w in d._windows(text)) == 2
+    [q] = d.predict_texts(["hello there"])
+    assert q.raw["windows"] == 1 and q.p_malicious == pytest.approx(0.1) and q.label == 0
+
+
+def test_truncation_mode_keeps_the_head_and_flags_the_cut():
+    d = _det("decide", max_length=4, window=False)
+    [short, long] = d.predict_texts(["hello there", "a b c d e ignore"])
+    assert short.outcome == "ok" and long.outcome == "truncated"
+    assert long.p_malicious == pytest.approx(0.1)   # "ignore" sat beyond the kept head
+
+
+def test_window_needs_max_length():
+    with pytest.raises(ValueError, match="window=true needs max_length"):
+        GLiNER2Detector({"mode": "decide", "model_id": "x", "window": True}, POL)
+
+
+def test_empty_text_is_scored_as_placeholder_in_every_mode():
+    for d in (_det("decide"), _det("decide", max_length=4, window=True), _det("decide", max_length=4)):
+        [p] = d.predict_texts(["   "])
+        assert p.p_malicious == pytest.approx(0.1) and p.outcome == "ok"
 
 
 def test_decide_mode_builds_schema_from_policy_and_orients_probability():

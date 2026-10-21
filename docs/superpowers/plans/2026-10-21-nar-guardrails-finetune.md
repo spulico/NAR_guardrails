@@ -660,9 +660,9 @@ def read_training_manifest(seed_dir: Path) -> dict:
   laya-ft-seed0: {adapter: laya, finetuned: true, model_id: models/laya-ft/seed0/model, device: auto, batch_size: 8, tracks: [skills]}
   laya-ft-seed1: {adapter: laya, finetuned: true, model_id: models/laya-ft/seed1/model, device: auto, batch_size: 8, tracks: [skills]}
   laya-ft-seed2: {adapter: laya, finetuned: true, model_id: models/laya-ft/seed2/model, device: auto, batch_size: 8, tracks: [skills]}
-  gliner2-decide-ft-seed0: {adapter: gliner2, mode: decide, finetuned: true, model_id: models/gliner2-decide-ft/seed0/model, device: auto, batch_size: 4, tracks: [skills]}
-  gliner2-decide-ft-seed1: {adapter: gliner2, mode: decide, finetuned: true, model_id: models/gliner2-decide-ft/seed1/model, device: auto, batch_size: 4, tracks: [skills]}
-  gliner2-decide-ft-seed2: {adapter: gliner2, mode: decide, finetuned: true, model_id: models/gliner2-decide-ft/seed2/model, device: auto, batch_size: 4, tracks: [skills]}
+  gliner2-decide-ft-seed0: {adapter: gliner2, mode: decide, finetuned: true, model_id: models/gliner2-decide-ft/seed0/model, max_length: 1024, window: true, device: auto, batch_size: 4, tracks: [skills]}
+  gliner2-decide-ft-seed1: {adapter: gliner2, mode: decide, finetuned: true, model_id: models/gliner2-decide-ft/seed1/model, max_length: 1024, window: true, device: auto, batch_size: 4, tracks: [skills]}
+  gliner2-decide-ft-seed2: {adapter: gliner2, mode: decide, finetuned: true, model_id: models/gliner2-decide-ft/seed2/model, max_length: 1024, window: true, device: auto, batch_size: 4, tracks: [skills]}
   modernbert-ft-seed0: {adapter: hf_classifier, finetuned: true, model_id: models/modernbert-ft/seed0/model, positive_label: malicious, max_length: 2048, device: auto, batch_size: 4, tracks: [skills]}
   modernbert-ft-seed1: {adapter: hf_classifier, finetuned: true, model_id: models/modernbert-ft/seed1/model, positive_label: malicious, max_length: 2048, device: auto, batch_size: 4, tracks: [skills]}
   modernbert-ft-seed2: {adapter: hf_classifier, finetuned: true, model_id: models/modernbert-ft/seed2/model, positive_label: malicious, max_length: 2048, device: auto, batch_size: 4, tracks: [skills]}
