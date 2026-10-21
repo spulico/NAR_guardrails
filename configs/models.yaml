@@ -59,24 +59,27 @@ detectors:
     batch_size: 4
     tracks: [skills]
   # GLiNER2 checkpoints set no max_len: without the window cap a 100k-character skill exhausts memory.
-  # 2048-token windows, max over windows. Only 8 of 9,086 prompts exceed one window (longest 4,522 tokens).
+  # 512-token windows, max over windows (gliner2's own long-document chunking defaults to 384 tokens).
+  # Measured on the M4 (DeBERTa-v3-large, MPS): 2048-token windows cost ~10 s each and eight of them per forward
+  # pass exhausted the 24 GB machine; 1024 ~1.9 s; 512 ~0.75 s at ~2 GB. 207 of 9,086 prompts span >1 window.
+  # batch_size is the number of windows per forward pass; it never changes verdicts.
   gliner2-decide:
     adapter: gliner2
     mode: decide
     model_id: fastino/GLiNER2.5-Decide
-    max_length: 2048
+    max_length: 512
     window: true
     device: auto
-    batch_size: 8
+    batch_size: 4
     tracks: [prompts, skills]
   gliguard:
     adapter: gliner2
     mode: gliguard
     model_id: fastino/gliguard-LLMGuardrails-300M
-    max_length: 2048
+    max_length: 512
     window: true
     device: auto
-    batch_size: 8
+    batch_size: 4
     tracks: [prompts, skills]
   qwen3guard-stream:
     adapter: qwen3guard
