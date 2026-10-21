@@ -8,6 +8,10 @@ from nar_guardrails.schema import Item
 
 MSB_META = {"license": "CC-BY-4.0", "published": "2026-08"}
 REPO_ID = "ProtectSkills/MaliciousSkillBench"
+# Hard cap on skill text length at load time. One upstream item (msb:ASB04_002434) is 21M
+# characters; everything else is under 30k. Capped items keep their label and record the
+# original length in meta["truncated_chars"].
+MAX_SKILL_CHARS = 100_000
 
 
 def _protocol_of_filename(name: str) -> str | None:
@@ -63,10 +67,13 @@ def load_malicious_skill_bench(rows: Iterable[dict], split_tables: dict[str, Ite
             continue
         bid = str(r["benchmark_id"])
         splits = {"MSD": maps.get("MSD", {}).get(bid), "SD": maps.get("SD", {}).get(bid)}
+        meta = {**MSB_META, "splits": splits, "source_id": r.get("source_id"),
+                "redacted": bool(r.get("text_redacted")), "structural_family": r.get("structural_family_id")}
+        if len(text) > MAX_SKILL_CHARS:
+            meta["truncated_chars"] = len(text)
+            text = text[:MAX_SKILL_CHARS]
         items.append(Item(id=f"msb:{bid}", track="skills", text=text, label=int(r["label"]), scenario=_category(r),
-                          source="malicious_skill_bench", split=splits["MSD"] or "unassigned",
-                          meta={**MSB_META, "splits": splits, "source_id": r.get("source_id"),
-                                "redacted": bool(r.get("text_redacted")), "structural_family": r.get("structural_family_id")}))
+                          source="malicious_skill_bench", split=splits["MSD"] or "unassigned", meta=meta))
     return items
 
 

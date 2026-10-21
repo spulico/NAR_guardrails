@@ -63,3 +63,12 @@ def test_category_from_real_list_valued_column():
              "attack_category_codes": ["execution_code_delivery"]}]
     [it] = load_malicious_skill_bench(rows, {"MSD": [], "SD": []})
     assert it.scenario == "Execution / Code Delivery"
+
+
+def test_oversized_skill_text_is_capped_and_flagged():
+    from nar_guardrails.datasets.skills_bench import MAX_SKILL_CHARS
+    big = dict(ROWS[0], benchmark_id="MSB-BIG", skill_text="x" * (MAX_SKILL_CHARS + 500))
+    [it] = load_malicious_skill_bench([big], {"MSD": [], "SD": []})
+    assert len(it.text) == MAX_SKILL_CHARS and it.meta["truncated_chars"] == MAX_SKILL_CHARS + 500 and it.label == 1
+    [small] = load_malicious_skill_bench([ROWS[0]], {"MSD": [], "SD": []})
+    assert "truncated_chars" not in small.meta
