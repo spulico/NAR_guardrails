@@ -1,0 +1,51 @@
+NAR Guardrails Lab
+Copyright 2026 the NAR Guardrails Lab authors
+
+LICENSING OF THIS REPOSITORY
+
+- Code, configuration and detection policies (everything except data/curated/):
+  Apache License 2.0, see LICENSE.
+  This includes the skill and prompt detection policies and judge prompts in
+  configs/policies/ (for example configs/policies/skills/industry-llm-judge.md).
+- Curated test data written for this project (data/curated/prompts.jsonl,
+  data/curated/skills/, data/curated/skills.jsonl, data/curated/skillspector_labels.jsonl):
+  Creative Commons Attribution 4.0 International (CC BY 4.0), see LICENSE-DATA.
+  Attribution: "NAR Guardrails Lab curated test sets".
+
+SAFETY
+
+data/curated/ contains deliberately malicious prompt-injection samples and malicious
+agent skills (SKILL.md files and bundled scripts). They are test fixtures for detectors.
+Never install, load or execute them as agent skills, tools or prompts. All network
+hosts in them use the reserved example.com / example.net domains.
+
+THIRD-PARTY DATA (not redistributed here)
+
+`nar data build` downloads the following public sources at build time. They are not
+stored in this repository; each stays under its own terms:
+
+- ProtectSkills/MaliciousSkillBench (Hugging Face) - metadata CC BY 4.0; each skill keeps its upstream terms
+- NVIDIA/SkillSpector test fixtures (GitHub) - Apache License 2.0
+- doronp/agentshield-benchmark (GitHub) - Apache License 2.0
+- neuralchemy/Prompt-injection-dataset (Hugging Face) - Apache License 2.0
+- ShirePyDev/Prompt-Injection-Detection-System, PIDS-Bench (GitHub) - MIT
+- sureheremarv/ipi_arena_attacks (Hugging Face) - MIT
+- microsoft/llmail-inject-challenge (Hugging Face) - MIT
+- getmcpm/mcp-guardbench (GitHub) - MIT
+- Simsonsun/JailbreakPrompts (Hugging Face) - MIT
+- allenai/WildChat-4.8M (Hugging Face) - ODC-BY
+- zhiqiangwang4/MCPTox-Benchmark (GitHub) - no licence stated; used for evaluation
+  with citation only, never redistributed
+- Gated, used only when the user has accepted the gate: prodnull/prompt-injection-repo-dataset,
+  centrepourlasecuriteia/jailbreak-dataset (BELLS, CC BY-NC-SA 4.0),
+  hackaprompt/Pliny_HackAPrompt_Dataset (CC BY 4.0),
+  Mindgard/evaded-prompt-injection-and-jailbreak-samples
+
+THIRD-PARTY MODELS (not redistributed here)
+
+Detectors download their models from Hugging Face at run time under each model's own
+licence and model card, for example convaiinnovations/laya (Apache-2.0),
+fastino/GLiNER2.5-Decide (Apache-2.0), answerdotai/ModernBERT-large (Apache-2.0),
+protectai/deberta-v3-base-prompt-injection-v2, Qwen/Qwen3Guard-Stream-0.6B, and the
+gated meta-llama/Llama-Prompt-Guard-2 models. Fine-tuned checkpoints, if published,
+ship with a model card naming their base model, its licence and the exact training data.

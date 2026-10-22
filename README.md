@@ -3,6 +3,14 @@
 Benchmark harness comparing non-autoregressive guardrail models (Laya, GLiNER2, encoder classifiers, ...) against Claude on two tracks: prompt injection (`prompts`) and malicious agent skills (`skills`).
 Design: `docs/superpowers/specs/2026-10-14-nar-guardrails-lab-design.md`.
 
+**Test sets and detection prompts for your own reviewer.** The curated skill and prompt test sets are in
+[`data/curated/`](data/curated/README.md) (format, labels and a scoring snippet in its README). The LLM judge
+prompt for malicious skills is [`configs/policies/skills/industry-llm-judge.md`](configs/policies/skills/industry-llm-judge.md);
+the NAR policies and the threat taxonomy are next to it in [`configs/policies/skills/`](configs/policies/skills/README.md).
+
+> `data/curated/` contains deliberately malicious skills and prompts. They are test fixtures: never install
+> or run them as agent skills, tools or prompts.
+
 ## Setup
 
 ```bash
@@ -92,3 +100,9 @@ Smoke runs go to `results/smoke-<timestamp>-<track>/`; `nar smoke` keeps its own
 ## Resolved dependency versions
 
 torch 2.14.1, transformers 5.20.0, gliner2 2.1.0, laya 0.4.8, anthropic 1.15.0
+
+## License
+
+Code, configuration and detection policies: Apache License 2.0 (`LICENSE`). Curated test data in
+`data/curated/`: CC BY 4.0 (`LICENSE-DATA`). Public datasets and models are downloaded at build or run time
+under their own terms and are not redistributed; see `NOTICE`.
