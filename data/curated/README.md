@@ -30,8 +30,13 @@ words, shell commands or network calls legitimately. Those look-alikes measure f
 
 Malicious rows, 2 each: `data-exfiltration`, `credential-harvesting`, `anti-refusal`,
 `hidden-instructions`, `download-and-execute`, `persistence`, `mcp-tool-poisoning`,
-`privilege-escalation`, `typosquatted-dependency`, `memory-poisoning`. In some malicious skills
-the payload sits only in the bundled scripts; those are caught only on the `text+scripts` rows.
+`privilege-escalation`, `typosquatted-dependency`, `memory-poisoning`.
+
+Skills with bundled scripts: 14 of the 40 (5 malicious, 9 benign). In this set every malicious
+skill also states its payload in SKILL.md, so the `text+scripts` rows mainly test false positives on
+benign skills that ship legitimate code. Payloads hidden only in a script are not covered here; three
+NVIDIA SkillSpector fixtures cover that case (`mcp_mismatched_skill`, `sdi/sdi1_mismatch`,
+`sdi/sdi4_divergence`, labelled in `skillspector_labels.jsonl`).
 
 ## Prompt test set (`prompts.jsonl`)
 
